@@ -24,7 +24,7 @@ scanner:
   # Run mode:
   #   "test"  → scan only the first symbol and first timeframe (fast dev mode)
   #   "full"  → scan all configured symbols and timeframes
-  run_mode: test
+  run_mode: single
 
 
 # ── Logging settings ──────────────────────────────────────────────────────────

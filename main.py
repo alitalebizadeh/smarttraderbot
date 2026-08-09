@@ -402,6 +402,11 @@ def main() -> None:
     try:
         if run_mode == "loop":
             run_loop(scanner, dashboard, cfg, logger)
+    elif run_mode in ("single", "test"):
+        run_single(scanner, dashboard, cfg, logger)
+    else:
+        logger.warning("Unknown run_mode '%s' — falling back to single.", run_mode)
+        run_single(scanner, dashboard, cfg, logger)
         else:
             run_single(scanner, dashboard, cfg, logger)
 
