@@ -1,0 +1,32 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SmartTraderBot — requirements.txt
+# Install with: pip install -r requirements.txt
+# Python 3.11+ required
+# ─────────────────────────────────────────────────────────────────────────────
+
+# ── Data processing ───────────────────────────────────────────────────────────
+pandas>=2.0.0
+numpy>=1.24.0
+
+# ── SMC / ICT indicators ──────────────────────────────────────────────────────
+# GitHub: https://github.com/joshyattridge/smart-money-concepts
+smartmoneyconcepts>=0.0.26
+
+# ── Config parsing ────────────────────────────────────────────────────────────
+PyYAML>=6.0.0
+
+# ── HTML templating (used by dashboard) ───────────────────────────────────────
+# Jinja2 is available for future template-based rendering
+Jinja2>=3.1.0
+
+# ── Environment variables (.env file support) ─────────────────────────────────
+python-dotenv>=1.0.0
+
+# ── MetaTrader 5 (Windows only — comment out on Mac/Linux for development) ────
+# MetaTrader5>=5.0.45
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Development / testing (optional — not needed for production)
+# ─────────────────────────────────────────────────────────────────────────────
+# pytest>=7.0.0
+# pytest-cov>=4.0.0
