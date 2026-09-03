@@ -222,16 +222,19 @@ li {{ margin-bottom: 6px; }}
             entry_ob = getattr(cluster, "entry_point_ob", None)
             entry_fvg = getattr(cluster, "entry_point_fvg", None)
             stop_loss = getattr(cluster, "stop_loss", None)
-            risk_pips = abs(float(stop_loss) - float(entry_ob)) / 0.01 if stop_loss is not None and entry_ob is not None else 0.0
+            entry_ob_val  = float(entry_ob)  if entry_ob  is not None else zbottom
+            entry_fvg_val = float(entry_fvg) if entry_fvg is not None else zbottom
+            stop_val      = float(stop_loss) if stop_loss is not None else zbottom
+            risk_pips = abs(stop_val - entry_ob_val) / 0.01 if entry_ob_val else 0.0
             signal_parts.append(f"""
 <div class="section setup-card {'bull' if direction == 'bullish' else 'bear'}">
   <h2>سیگنال #{rank} | {direction_fa} | امتیاز: {score:.1f}/100 | رتبه: {grade}</h2>
   <h3>۱. جهت حرکت بازار</h3>
   <p>بازار <strong>{direction_fa}</strong> است. دلیل: {len(aligned_events)} رویداد BOS/CHoCH در جهت {direction_fa} شناسایی شد.<br>آخرین رویداد: {event_type} در ساعت {event_time} تأیید شد.</p>
   <h3>۲. زمان و نقطه ورود</h3>
-  <p>اردر بلاک در ساعت <span class="timestamp">{ob_time}</span> تشکیل شد.<br>شکاف ارزش (FVG) در ساعت <span class="timestamp">{fvg_time}</span> تشکیل شد.<br>پیشنهاد ورود: ساعت <span class="timestamp">{entry_time}</span><br>نقطه ورود ۱ (کف OB): <span class="price">{float(entry_ob):.2f}</span><br>نقطه ورود ۲ (کف FVG): <span class="price">{float(entry_fvg):.2f}</span></p>
+  <p>اردر بلاک در ساعت <span class="timestamp">{ob_time}</span> تشکیل شد.<br>شکاف ارزش (FVG) در ساعت <span class="timestamp">{fvg_time}</span> تشکیل شد.<br>پیشنهاد ورود: ساعت <span class="timestamp">{entry_time}</span><br>نقطه ورود ۱ (کف OB): <span class="price">{entry_ob_val:.2f}</span><br>نقطه ورود ۲ (کف FVG): <span class="price">{entry_fvg_val:.2f}</span></p>
   <h3>۳. مختصات معامله</h3>
-  <p>زون کامل: <span class="price">{zbottom:.2f}</span> — <span class="price">{ztop:.2f}</span><br>میانه زون: <span class="price">{midpoint:.2f}</span><br>حد ضرر: <span class="price">{float(stop_loss):.2f}</span> (بافر ۲ پیپ)<br>ناحیه P/D: {getattr(cluster, 'premium_discount_zone', 'unknown')}</p>
+  <p>زون کامل: <span class="price">{zbottom:.2f}</span> — <span class="price">{ztop:.2f}</span><br>میانه زون: <span class="price">{midpoint:.2f}</span><br>حد ضرر: <span class="price">{stop_val:.2f}</span> (بافر ۲ پیپ)<br>ناحیه P/D: {getattr(cluster, 'premium_discount_zone', 'unknown')}</p>
   <div class="factor-row"><span class="factor yes">اردر بلاک: ✅ ({status})</span><span class="factor yes">شکاف ارزش: ✅</span><span class="factor {'yes' if has_sweep else 'no'}">نقدینگی‌برداری: {'✅' if has_sweep else '❌'}</span><span class="factor {'yes' if has_bos else 'no'}">شکست ساختار: {'✅' if has_bos else '❌'}</span></div>
   <h3>استدلال کامل</h3>
   <p class="analysis-text">در ساعت {ob_time} آخرین کندل مخالف پیش از displacement به عنوان اردر بلاک انتخاب شد و این زون بین {zbottom:.2f} و {ztop:.2f} قرار دارد. این اردر بلاک وضعیت {status} دارد. در ساعت {fvg_time} شکاف ارزش منصفانه بین {float(getattr(fvg, 'zone_bottom', 0.0)):.2f} و {float(getattr(fvg, 'zone_top', 0.0)):.2f} تشکیل شد و با OB همپوشانی دارد. پیشنهاد ورود در ساعت {entry_time} است و فاصله ورود تا حد ضرر حدود {risk_pips:.1f} پیپ ریسک دارد.</p>
