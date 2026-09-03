@@ -427,6 +427,18 @@ class ZoneClusterEngine:
         if not (has_ob or has_fvg):
             return None
 
+        # Extract formation times and entry points from raw zones
+        ob_zone  = next((z for z in group if z.factor_type == "order_block"), None)
+        fvg_zone = next((z for z in group if z.factor_type == "fvg"), None)
+        ob_formation_time  = ob_zone.ob_time  if ob_zone  else None
+        fvg_formation_time = fvg_zone.fvg_time if fvg_zone else None
+        entry_point_ob  = ob_zone.zone_bottom  if ob_zone  else None
+        entry_point_fvg = fvg_zone.zone_bottom if fvg_zone else None
+        if direction == "bearish":
+            stop_loss_val = zone_top + (zone_top - zone_bottom) * 0.02
+        else:
+            stop_loss_val = zone_bottom - (zone_top - zone_bottom) * 0.02
+
         if not self._valid_zone(zone_top, zone_bottom):
             return None
 
