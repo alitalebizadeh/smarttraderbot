@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any, Literal, Optional
 
 from src.models.zone_cluster import ClusterFactor, ClusterMap, ZoneCluster
@@ -62,6 +62,9 @@ class _RawZone:
     strength: float
     description: str
     zone_id: str
+    is_broken_retested: bool = False
+    ob_time: Optional[datetime] = None
+    fvg_time: Optional[datetime] = None
 
 
 # ---------------------------------------------------------------------------
@@ -205,6 +208,7 @@ class ZoneClusterEngine:
 
         # Step 10 — Sort by score descending
         clusters.sort(key=lambda c: c.confluence_score, reverse=True)
+        clusters = clusters[:3]
 
         top        = clusters[0] if clusters else None
         top_score  = top.confluence_score if top else 0.0
@@ -276,6 +280,8 @@ class ZoneClusterEngine:
                     strength=float(getattr(ob, "strength", 0.5)),
                     description=f"{label} OB at {bottom:.2f}–{top:.2f}",
                     zone_id=str(getattr(ob, "ob_id", "")),
+                    is_broken_retested=bool(getattr(ob, "is_broken_retested", False)),
+                    ob_time=getattr(ob, "candle_time", getattr(ob, "origin_time", None)),
                 ))
 
         # --- FVGs ---
@@ -304,6 +310,7 @@ class ZoneClusterEngine:
                     strength=0.65,
                     description=f"FVG at {bottom:.2f}–{top:.2f}",
                     zone_id=str(getattr(fvg, "fvg_id", "")),
+                    fvg_time=getattr(fvg, "candle_time", None),
                 ))
 
         # --- Supply / Demand ---
@@ -415,6 +422,11 @@ class ZoneClusterEngine:
         zone_top    = max(z.zone_top    for z in group)
         zone_bottom = min(z.zone_bottom for z in group)
 
+        has_ob = any(z.factor_type == "order_block" for z in group)
+        has_fvg = any(z.factor_type == "fvg" for z in group)
+        if not (has_ob and has_fvg):
+            return None
+
         if not self._valid_zone(zone_top, zone_bottom):
             return None
 
@@ -441,6 +453,7 @@ class ZoneClusterEngine:
                 zone_bottom=z.zone_bottom,
                 strength=z.strength,
                 description=z.description,
+                is_broken_retested=z.is_broken_retested,
             )
             for z in group
         ]
@@ -451,8 +464,24 @@ class ZoneClusterEngine:
 
         types  = {z.factor_type for z in group}
         has_ob = "order_block"   in types
-        has_fv = "fvg"           in types
+        has_fv = "fvg"            in types
         has_sd = "supply_demand" in types
+
+        ob_times = [z.ob_time for z in group if z.factor_type == "order_block" and z.ob_time is not None]
+        fvg_times = [z.fvg_time for z in group if z.factor_type == "fvg" and z.fvg_time is not None]
+        ob_time = min(ob_times) if ob_times else None
+        fvg_time = min(fvg_times) if fvg_times else None
+        entry_time = max(ob_time, fvg_time) + timedelta(minutes=1) if ob_time and fvg_time else None
+        ob_factors = [z for z in group if z.factor_type == "order_block"]
+        fvg_factors = [z for z in group if z.factor_type == "fvg"]
+        if direction == "bearish":
+            entry_ob = min(z.zone_bottom for z in ob_factors) if ob_factors else None
+            entry_fvg = min(z.zone_bottom for z in fvg_factors) if fvg_factors else None
+            stop_loss = max(z.zone_top for z in ob_factors) + (2 * self._pip_size) if ob_factors else None
+        else:
+            entry_ob = max(z.zone_top for z in ob_factors) if ob_factors else None
+            entry_fvg = max(z.zone_top for z in fvg_factors) if fvg_factors else None
+            stop_loss = min(z.zone_bottom for z in ob_factors) - (2 * self._pip_size) if ob_factors else None
 
         pd_zone = self._classify_pd(zone_midpoint, pd_range, direction)
 
@@ -475,6 +504,12 @@ class ZoneClusterEngine:
                 has_supply_demand=has_sd,
                 premium_discount_zone=pd_zone,
                 created_at=datetime.utcnow(),
+                ob_formation_time=ob_time,
+                fvg_formation_time=fvg_time,
+                entry_time_suggestion=entry_time,
+                entry_point_ob=entry_ob,
+                entry_point_fvg=entry_fvg,
+                stop_loss=stop_loss,
             )
         except ValueError as exc:
             self._log.warning(
@@ -666,6 +701,12 @@ class ZoneClusterEngine:
             score += _SCORE_OB
         if cluster.has_fvg:
             score += _SCORE_FVG
+        if any(
+            getattr(f, "is_broken_retested", False)
+            for f in cluster.factors
+            if f.factor_type == "order_block"
+        ):
+            score += 15.0
         if cluster.has_liquidity_sweep:
             score += _SCORE_SWEEP
         if cluster.has_bos:

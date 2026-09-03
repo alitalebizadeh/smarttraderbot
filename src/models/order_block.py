@@ -67,6 +67,7 @@ class OrderBlock:
     displacement_start_index: int
     displacement_direction: Literal["bullish", "bearish"]
     is_mitigated: bool = field(default=False)
+    is_broken_retested: bool = field(default=False)
     mitigated_at_time: Optional[datetime] = field(default=None)
     mitigated_at_price: Optional[float] = field(default=None)
     touch_count: int = field(default=0)
@@ -178,6 +179,7 @@ class OrderBlock:
             "displacement_start_index": self.displacement_start_index,
             "displacement_direction": self.displacement_direction,
             "is_mitigated": self.is_mitigated,
+            "is_broken_retested": self.is_broken_retested,
             "mitigated_at_time": (
                 self.mitigated_at_time.isoformat()
                 if self.mitigated_at_time is not None

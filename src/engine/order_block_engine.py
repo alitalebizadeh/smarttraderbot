@@ -84,6 +84,7 @@ class OrderBlock:
     displacement_index: int
     displacement_time: datetime
     is_mitigated: bool = field(default=False)
+    is_broken_retested: bool = field(default=False)
     mitigated_at_index: Optional[int] = field(default=None)
     mitigated_at_time: Optional[datetime] = field(default=None)
     strength: float = field(default=0.0)
@@ -110,6 +111,7 @@ class OrderBlock:
             "displacement_index": self.displacement_index,
             "displacement_time": self.displacement_time.isoformat(),
             "is_mitigated": self.is_mitigated,
+            "is_broken_retested": self.is_broken_retested,
             "mitigated_at_index": self.mitigated_at_index,
             "mitigated_at_time": (
                 self.mitigated_at_time.isoformat()
@@ -330,6 +332,7 @@ class OrderBlockEngine:
                 bearish_obs.append(ob)
 
         all_obs = bullish_obs + bearish_obs
+        self._check_broken_retested(df, all_obs)
         self._check_mitigation(df, all_obs, timestamps)
 
         active_obs = sorted(
@@ -514,6 +517,34 @@ class OrderBlockEngine:
     # Private: mitigation
     # ------------------------------------------------------------------
 
+    def _check_broken_retested(
+        self, df: pd.DataFrame, obs: list[OrderBlock]
+    ) -> None:
+        """Mark zones that were broken and subsequently retested."""
+        highs = df["high"].to_numpy(dtype=float)
+        lows = df["low"].to_numpy(dtype=float)
+        closes = df["close"].to_numpy(dtype=float)
+
+        for ob in obs:
+            broken = False
+            start = ob.origin_index + 1
+            for i in range(start, len(df)):
+                if ob.direction == "bearish":
+                    if not broken and closes[i] < ob.zone_bottom:
+                        broken = True
+                    elif broken and lows[i] <= ob.zone_top and highs[i] >= ob.zone_bottom:
+                        ob.is_broken_retested = True
+                        break
+                else:
+                    if not broken and closes[i] > ob.zone_top:
+                        broken = True
+                    elif broken and lows[i] <= ob.zone_top and highs[i] >= ob.zone_bottom:
+                        ob.is_broken_retested = True
+                        break
+
+            if ob.is_broken_retested:
+                self._log.info("OB %s marked broken and retested.", ob.ob_id)
+
     def _check_mitigation(
         self,
         df: pd.DataFrame,
@@ -546,6 +577,8 @@ class OrderBlockEngine:
         n      = len(df)
 
         for ob in obs:
+            if ob.is_broken_retested:
+                continue
             start = ob.displacement_index + 1
             if start >= n:
                 continue

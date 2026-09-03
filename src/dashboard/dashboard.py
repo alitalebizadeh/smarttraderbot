@@ -122,6 +122,7 @@ class Dashboard:
         self,
         outputs: list[Any],
         title: str = _DEFAULT_TITLE,
+        cluster_maps: list[Any] = None,
     ) -> str:
         """Build and return the complete HTML dashboard page as a string.
 
@@ -156,6 +157,20 @@ class Dashboard:
             summary_cards_parts: list[str] = []
             top_results_parts:   list[str] = []
             tables_parts:        list[str] = []
+            cluster_summary_parts: list[str] = []
+
+            for cluster_map in (cluster_maps or []):
+                for rank, cluster in enumerate((getattr(cluster_map, "clusters", []) or [])[:3], 1):
+                    direction = str(getattr(cluster, "direction", ""))
+                    grade = str(getattr(cluster, "grade", "D"))
+                    score = float(getattr(cluster, "confluence_score", 0.0))
+                    cluster_summary_parts.append(
+                        f'<div class="top-result-card"><div class="top-result-header">#{rank} {html_module.escape(direction)} | {html_module.escape(grade)} | {score:.1f}/100</div>'
+                        f'<div class="top-result-body"><div>Zone: {float(getattr(cluster, "zone_bottom", 0.0)):.2f} - {float(getattr(cluster, "zone_top", 0.0)):.2f}</div>'
+                        f'<div>Entries: {getattr(cluster, "entry_point_ob", None)} / {getattr(cluster, "entry_point_fvg", None)}</div>'
+                        f'<div>Formation: {getattr(cluster, "ob_formation_time", None)}</div>'
+                        f'<div class="score-bar">Score: {"|" * max(1, round(score / 5))}</div></div></div>'
+                    )
 
             if not outputs:
                 tables_parts.append(
@@ -229,6 +244,7 @@ class Dashboard:
                 "  </div>\n"
                 '  <div class="content">\n'
                 f"{summary_cards_html}\n"
+                f"{''.join(cluster_summary_parts)}\n"
                 f"{top_results_html}\n"
                 f"{tables_html}\n"
                 "  </div>\n"
@@ -281,6 +297,7 @@ class Dashboard:
         self,
         outputs: list[Any],
         title: str = _DEFAULT_TITLE,
+        cluster_maps: list[Any] = None,
     ) -> str:
         """Render the dashboard and save it to disk in one call.
 
@@ -296,7 +313,9 @@ class Dashboard:
             Never raises.
         """
         try:
-            html_content = self.render(outputs=outputs, title=title)
+            html_content = self.render(
+                outputs=outputs, title=title, cluster_maps=cluster_maps
+            )
             if not html_content:
                 _logger.warning("render_and_save(): render() returned empty content.")
                 return ""

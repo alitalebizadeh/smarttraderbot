@@ -286,7 +286,9 @@ def run_single(
         format_duration_ms(duration_ms),
     )
 
-    path = dashboard.render_and_save(outputs, title=cfg["dashboard_title"])
+    cluster_maps = [getattr(getattr(result, "snapshot", None), "cluster_map", None)
+                    for result in getattr(scan_result, "timeframe_results", []) or []]
+    path = dashboard.render_and_save(outputs, title=cfg["dashboard_title"], cluster_maps=cluster_maps)
     if path:
         logger.info("Dashboard saved: %s", path)
     else:
@@ -298,7 +300,7 @@ def run_single(
         logger.info("signals.json saved: %s", signals_path)
 
     # Generate trader-style analysis report
-    report_path = generate_report(scan_result, outputs, output_dir=cfg["output_dir"])
+    report_path = generate_report(scan_result, outputs, output_dir=cfg["output_dir"], cluster_maps=cluster_maps)
     if report_path:
         logger.info("Analysis report saved: %s", report_path)
 
@@ -349,14 +351,16 @@ def run_loop(
                 format_duration_ms(duration_ms),
             )
 
-            path = dashboard.render_and_save(outputs, title=cfg["dashboard_title"])
+            cluster_maps = [getattr(getattr(result, "snapshot", None), "cluster_map", None)
+                            for result in getattr(scan_result, "timeframe_results", []) or []]
+            path = dashboard.render_and_save(outputs, title=cfg["dashboard_title"], cluster_maps=cluster_maps)
             if path:
                 logger.info("Dashboard saved: %s", path)
             else:
                 logger.warning("Dashboard was not saved.")
 
             export_signals(scan_result, output_dir=cfg["output_dir"])
-            generate_report(scan_result, outputs, output_dir=cfg["output_dir"])
+            generate_report(scan_result, outputs, output_dir=cfg["output_dir"], cluster_maps=cluster_maps)
             export_entry_points(scan_result, output_dir=cfg["output_dir"])
 
         except Exception as exc:

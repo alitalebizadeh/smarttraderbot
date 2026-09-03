@@ -120,7 +120,9 @@ class TimeframeScanner:
         self._poi_engine:  POIEngine           = POIEngine()
         self._conf_engine: ConfluenceEngine    = ConfluenceEngine()
         self._scorer:      ZoneScorer          = ZoneScorer()
-        self._cluster_engine: ZoneClusterEngine = ZoneClusterEngine()
+        self._cluster_engine: ZoneClusterEngine = ZoneClusterEngine(
+            pip_size=0.01, cluster_tolerance_pips=20.0, min_factors=1
+        )
         self._entry_engine: EntryPointEngine   = EntryPointEngine()
 
     # ------------------------------------------------------------------

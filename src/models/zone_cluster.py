@@ -32,6 +32,7 @@ class ClusterFactor:
     zone_bottom: float
     strength: float
     description: str
+    is_broken_retested: bool = field(default=False)
 
     def __post_init__(self) -> None:
         """Validate field values after initialisation.
@@ -83,6 +84,7 @@ class ClusterFactor:
             "zone_bottom": round(self.zone_bottom, 6),
             "strength": round(self.strength, 4),
             "description": self.description,
+            "is_broken_retested": self.is_broken_retested,
         }
 
 
@@ -167,6 +169,12 @@ class ZoneCluster:
     is_tradeable: bool = field(default=False)
     created_at: datetime = field(default_factory=datetime.utcnow)
     invalidated: bool = field(default=False)
+    ob_formation_time: Optional[datetime] = field(default=None)
+    fvg_formation_time: Optional[datetime] = field(default=None)
+    entry_time_suggestion: Optional[datetime] = field(default=None)
+    entry_point_ob: Optional[float] = field(default=None)
+    entry_point_fvg: Optional[float] = field(default=None)
+    stop_loss: Optional[float] = field(default=None)
 
     def __post_init__(self) -> None:
         """Validate field values after initialisation.
@@ -280,6 +288,21 @@ class ZoneCluster:
             "is_tradeable": self.is_tradeable,
             "created_at": self.created_at.isoformat(),
             "invalidated": self.invalidated,
+            "ob_formation_time": (
+                self.ob_formation_time.isoformat()
+                if self.ob_formation_time is not None else None
+            ),
+            "fvg_formation_time": (
+                self.fvg_formation_time.isoformat()
+                if self.fvg_formation_time is not None else None
+            ),
+            "entry_time_suggestion": (
+                self.entry_time_suggestion.isoformat()
+                if self.entry_time_suggestion is not None else None
+            ),
+            "entry_point_ob": round(self.entry_point_ob, 6) if self.entry_point_ob is not None else None,
+            "entry_point_fvg": round(self.entry_point_fvg, 6) if self.entry_point_fvg is not None else None,
+            "stop_loss": round(self.stop_loss, 6) if self.stop_loss is not None else None,
         }
 
 

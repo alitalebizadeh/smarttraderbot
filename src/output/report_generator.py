@@ -80,9 +80,10 @@ class ReportGenerator:
         self._output_dir = Path(output_dir)
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
-    def generate(self, scan_result: Any, scoring_outputs: list[Any]) -> str:
+    def generate(self, scan_result: Any, scoring_outputs: list[Any],
+                 cluster_maps: list[Any] = None) -> str:
         try:
-            html = self._build_html(scan_result, scoring_outputs)
+            html = self._build_html(scan_result, scoring_outputs, cluster_maps)
             path = self._output_dir / "analysis_report.html"
             path.write_text(html, encoding="utf-8")
             logger.info("Analysis report saved: %s", path)
@@ -91,9 +92,27 @@ class ReportGenerator:
             logger.error("Failed to generate report: %s", exc)
             return ""
 
-    def _build_html(self, scan_result: Any, scoring_outputs: list[Any]) -> str:
+    def _build_html(self, scan_result: Any, scoring_outputs: list[Any],
+                    cluster_maps: list[Any] = None) -> str:
         now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-        sections = "\n".join(self._build_section(o) for o in scoring_outputs)
+        if cluster_maps:
+            sections = "\n".join(
+                self._build_cluster_section(
+                    cluster_map, index,
+                    getattr(
+                        getattr(scan_result, "timeframe_results", [])[index - 1]
+                        if len(getattr(scan_result, "timeframe_results", []) or []) >= index
+                        else None,
+                        "snapshot",
+                        None,
+                    ),
+                )
+                for index, cluster_map in enumerate(cluster_maps, 1)
+                if cluster_map is not None
+                for _ in [0]
+            )
+        else:
+            sections = "\n".join(self._build_section(o) for o in scoring_outputs)
 
         return f"""<!DOCTYPE html>
 <html lang="fa" dir="rtl">
@@ -159,6 +178,65 @@ li {{ margin-bottom: 6px; }}
 <div class="footer">{T_FOOTER}</div>
 </body>
 </html>"""
+
+    @staticmethod
+    def _time_text(value: Any) -> str:
+        return value.strftime("%H:%M") if hasattr(value, "strftime") else "--:--"
+
+    def _build_cluster_section(self, cluster_map: Any, section_number: int,
+                               snapshot: Any = None) -> str:
+        """Render the top three bias-aligned OB+FVG clusters."""
+        clusters = (getattr(cluster_map, "clusters", []) or [])[:3]
+        bias = str(getattr(cluster_map, "market_bias", "neutral"))
+        direction_fa = T_BULL if bias == "bullish" else T_BEAR
+        events = []
+        structure = getattr(snapshot, "market_structure", None)
+        events = getattr(structure, "events", []) or []
+        aligned_events = [
+            event for event in events
+            if str(getattr(event, "direction", "")) == bias
+            and str(getattr(event, "event_type", "")) in ("BOS", "CHoCH")
+        ]
+        event = aligned_events[-1] if aligned_events else None
+        event_type = str(getattr(event, "event_type", "BOS"))
+        event_time = self._time_text(getattr(event, "event_time", None))
+        signal_parts = []
+        for rank, cluster in enumerate(clusters, 1):
+            factors = getattr(cluster, "factors", []) or []
+            ob = next((f for f in factors if f.factor_type == "order_block"), None)
+            fvg = next((f for f in factors if f.factor_type == "fvg"), None)
+            has_sweep = bool(getattr(cluster, "has_liquidity_sweep", False))
+            has_bos = bool(getattr(cluster, "has_bos", False))
+            broken = bool(getattr(ob, "is_broken_retested", False)) if ob else False
+            direction = str(getattr(cluster, "direction", bias))
+            direction_fa = T_BULL if direction == "bullish" else T_BEAR
+            status = "broken & retested" if broken else "fresh"
+            ob_time = self._time_text(getattr(cluster, "ob_formation_time", None))
+            fvg_time = self._time_text(getattr(cluster, "fvg_formation_time", None))
+            entry_time = self._time_text(getattr(cluster, "entry_time_suggestion", None))
+            score = float(getattr(cluster, "confluence_score", 0.0))
+            grade = str(getattr(cluster, "grade", "D"))
+            zbottom = float(getattr(cluster, "zone_bottom", 0.0))
+            ztop = float(getattr(cluster, "zone_top", 0.0))
+            midpoint = float(getattr(cluster, "zone_midpoint", 0.0))
+            entry_ob = getattr(cluster, "entry_point_ob", None)
+            entry_fvg = getattr(cluster, "entry_point_fvg", None)
+            stop_loss = getattr(cluster, "stop_loss", None)
+            risk_pips = abs(float(stop_loss) - float(entry_ob)) / 0.01 if stop_loss is not None and entry_ob is not None else 0.0
+            signal_parts.append(f"""
+<div class="section setup-card {'bull' if direction == 'bullish' else 'bear'}">
+  <h2>سیگنال #{rank} | {direction_fa} | امتیاز: {score:.1f}/100 | رتبه: {grade}</h2>
+  <h3>۱. جهت حرکت بازار</h3>
+  <p>بازار <strong>{direction_fa}</strong> است. دلیل: {len(aligned_events)} رویداد BOS/CHoCH در جهت {direction_fa} شناسایی شد.<br>آخرین رویداد: {event_type} در ساعت {event_time} تأیید شد.</p>
+  <h3>۲. زمان و نقطه ورود</h3>
+  <p>اردر بلاک در ساعت <span class="timestamp">{ob_time}</span> تشکیل شد.<br>شکاف ارزش (FVG) در ساعت <span class="timestamp">{fvg_time}</span> تشکیل شد.<br>پیشنهاد ورود: ساعت <span class="timestamp">{entry_time}</span><br>نقطه ورود ۱ (کف OB): <span class="price">{float(entry_ob):.2f}</span><br>نقطه ورود ۲ (کف FVG): <span class="price">{float(entry_fvg):.2f}</span></p>
+  <h3>۳. مختصات معامله</h3>
+  <p>زون کامل: <span class="price">{zbottom:.2f}</span> — <span class="price">{ztop:.2f}</span><br>میانه زون: <span class="price">{midpoint:.2f}</span><br>حد ضرر: <span class="price">{float(stop_loss):.2f}</span> (بافر ۲ پیپ)<br>ناحیه P/D: {getattr(cluster, 'premium_discount_zone', 'unknown')}</p>
+  <div class="factor-row"><span class="factor yes">اردر بلاک: ✅ ({status})</span><span class="factor yes">شکاف ارزش: ✅</span><span class="factor {'yes' if has_sweep else 'no'}">نقدینگی‌برداری: {'✅' if has_sweep else '❌'}</span><span class="factor {'yes' if has_bos else 'no'}">شکست ساختار: {'✅' if has_bos else '❌'}</span></div>
+  <h3>استدلال کامل</h3>
+  <p class="analysis-text">در ساعت {ob_time} آخرین کندل مخالف پیش از displacement به عنوان اردر بلاک انتخاب شد و این زون بین {zbottom:.2f} و {ztop:.2f} قرار دارد. این اردر بلاک وضعیت {status} دارد. در ساعت {fvg_time} شکاف ارزش منصفانه بین {float(getattr(fvg, 'zone_bottom', 0.0)):.2f} و {float(getattr(fvg, 'zone_top', 0.0)):.2f} تشکیل شد و با OB همپوشانی دارد. پیشنهاد ورود در ساعت {entry_time} است و فاصله ورود تا حد ضرر حدود {risk_pips:.1f} پیپ ریسک دارد.</p>
+</div>""")
+        return "".join(signal_parts) if signal_parts else f"<div class=\"section\"><p>{T_NO_ZONES}</p></div>"
 
     def _build_section(self, output: Any) -> str:
         symbol    = str(getattr(output, "symbol", ""))
@@ -489,5 +567,8 @@ li {{ margin-bottom: 6px; }}
 
 
 def generate_report(scan_result: Any, scoring_outputs: list[Any],
-                    output_dir: str = "output_files") -> str:
-    return ReportGenerator(output_dir=output_dir).generate(scan_result, scoring_outputs)
+                    output_dir: str = "output_files",
+                    cluster_maps: list[Any] = None) -> str:
+    return ReportGenerator(output_dir=output_dir).generate(
+        scan_result, scoring_outputs, cluster_maps
+    )
