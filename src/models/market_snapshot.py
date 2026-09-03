@@ -49,6 +49,9 @@ class MarketSnapshot:
     fvgs: Optional[Any] = field(default=None)
     supply_demand: Optional[Any] = field(default=None)
     pois: Optional[Any] = field(default=None)
+    cluster_map: Optional[Any] = field(default=None)
+    entry_map: Optional[Any] = field(default=None)
+    df: Any = field(default=None)  # Source OHLCV DataFrame
     engines_run: list[str] = field(default_factory=list)
     engines_failed: list[str] = field(default_factory=list)
     scan_duration_ms: float = field(default=0.0)
@@ -78,6 +81,8 @@ class MarketSnapshot:
             "fvgs": _name(self.fvgs),
             "supply_demand": _name(self.supply_demand),
             "pois": _name(self.pois),
+            "cluster_map": _name(self.cluster_map),
+            "entry_map": _name(self.entry_map),
             "engines_run": self.engines_run,
             "engines_failed": self.engines_failed,
             "scan_duration_ms": round(self.scan_duration_ms, 2),

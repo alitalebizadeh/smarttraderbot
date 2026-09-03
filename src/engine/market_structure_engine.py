@@ -144,7 +144,7 @@ class MarketStructureEngine:
         # ── Analysis ───────────────────────────────────────────────────
         try:
             swing_highs, swing_lows = self._detect_swings(df)
-            events, current_bias = self._detect_events(df, swing_highs, swing_lows)
+            events, current_bias = self._detect_events(df, swing_highs, swing_lows, symbol=symbol, timeframe=timeframe)
 
             # Fall back to structural bias if no events found
             if not events and current_bias == "neutral":
@@ -278,6 +278,8 @@ class MarketStructureEngine:
         df: pd.DataFrame,
         swing_highs: list[SwingPoint],
         swing_lows: list[SwingPoint],
+        symbol: str = "",
+        timeframe: str = "",
     ) -> tuple[list[MarketStructureEvent], Literal["bullish", "bearish", "neutral"]]:
         """Detect BOS and CHoCH events by iterating candles chronologically.
 
@@ -338,8 +340,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     # Reset so same level doesn't trigger again
                     last_confirmed_high = None
@@ -353,8 +355,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     current_bias = "bearish"
                     last_confirmed_low = None
@@ -370,8 +372,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     last_confirmed_low = None
 
@@ -384,8 +386,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     current_bias = "bullish"
                     last_confirmed_high = None
@@ -400,8 +402,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     current_bias = "bullish"
                     last_confirmed_high = None
@@ -414,8 +416,8 @@ class MarketStructureEngine:
                         break_candle_index=i,
                         break_candle_time=candle_time,
                         break_price=close,
-                        symbol=df.attrs.get("symbol", ""),
-                        timeframe=df.attrs.get("timeframe", ""),
+                        symbol=symbol,
+                        timeframe=timeframe,
                     ))
                     current_bias = "bearish"
                     last_confirmed_low = None

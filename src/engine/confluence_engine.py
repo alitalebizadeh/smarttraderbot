@@ -166,6 +166,50 @@ class ConfluenceEngine:
             total_evaluated=len(results),
         )
 
+    def filter_by_bias(
+        self,
+        confluence_map: Optional[ConfluenceMap],
+        bias: str,
+    ) -> Optional[ConfluenceMap]:
+        """Keep only results whose direction matches market trend.
+
+        Neutral / ranging bias leaves the map unchanged.  Counter-trend
+        POIs are dropped when bias is ``bullish`` or ``bearish``.
+        """
+        if confluence_map is None:
+            return None
+        if bias not in ("bullish", "bearish"):
+            return confluence_map
+
+        aligned = [
+            r for r in (confluence_map.results or [])
+            if str(getattr(r, "direction", "")) == bias
+        ]
+        aligned.sort(key=lambda r: r.total_score, reverse=True)
+        tradeable = [r for r in aligned if r.is_tradeable]
+        avg_score = (
+            sum(r.total_score for r in aligned) / len(aligned)
+            if aligned
+            else 0.0
+        )
+        removed = len(confluence_map.results or []) - len(aligned)
+        if removed:
+            self._log.info(
+                "[%s/%s] Bias filter (%s): dropped %d counter-trend result(s).",
+                confluence_map.symbol, confluence_map.timeframe, bias, removed,
+            )
+
+        return ConfluenceMap(
+            symbol=confluence_map.symbol,
+            timeframe=confluence_map.timeframe,
+            scanned_at=confluence_map.scanned_at,
+            results=aligned,
+            tradeable=tradeable,
+            top_result=aligned[0] if aligned else None,
+            avg_score=avg_score,
+            total_evaluated=len(aligned),
+        )
+
     # ------------------------------------------------------------------
     # Private: POI evaluation
     # ------------------------------------------------------------------
@@ -240,6 +284,7 @@ class ConfluenceEngine:
             zone_top=getattr(poi, "zone_top", 0.0),
             zone_bottom=getattr(poi, "zone_bottom", 0.0),
             zone_midpoint=getattr(poi, "zone_midpoint", 0.0),
+            premium_discount_zone=str(getattr(poi, "premium_discount_zone", "unknown")),
             grade=grade,
             is_tradeable=is_tradeable,
         )

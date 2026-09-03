@@ -9,6 +9,7 @@ import pandas as pd
 
 from src.engine.confluence_engine import ConfluenceEngine
 from src.engine.displacement_engine import DisplacementEngine
+from src.engine.entry_point_engine import EntryPointEngine
 from src.engine.fvg_engine import FVGEngine
 from src.engine.order_block_engine import OrderBlockEngine
 from src.engine.poi_engine import POIEngine
@@ -17,6 +18,7 @@ from src.models.market_snapshot import MarketSnapshot
 from src.models.scan_result import SymbolTimeframePair, TimeframeScanResult
 from src.models.scoring import ScoringOutput
 from src.scoring.zone_scorer import ZoneScorer
+from src.engine.zone_cluster_engine import ZoneClusterEngine
 
 __all__ = ["TimeframeScanner", "TimeframeScannerError", "create_scanner"]
 
@@ -118,6 +120,8 @@ class TimeframeScanner:
         self._poi_engine:  POIEngine           = POIEngine()
         self._conf_engine: ConfluenceEngine    = ConfluenceEngine()
         self._scorer:      ZoneScorer          = ZoneScorer()
+        self._cluster_engine: ZoneClusterEngine = ZoneClusterEngine()
+        self._entry_engine: EntryPointEngine   = EntryPointEngine()
 
     # ------------------------------------------------------------------
     # Public API
@@ -149,6 +153,7 @@ class TimeframeScanner:
         try:
             snapshot, scoring_output = self._run_pipeline(symbol, timeframe)
             duration_ms = (time.perf_counter_ns() - start_ns) / 1_000_000.0
+            entry_map = getattr(snapshot, "entry_map", None)
 
             self._log.info(
                 "[%s/%s] Scan complete in %.1f ms — success=True",
@@ -164,6 +169,7 @@ class TimeframeScanner:
                 scan_duration_ms=duration_ms,
                 snapshot=snapshot,
                 scoring_output=scoring_output,
+                entry_map=entry_map,
                 error_message=None,
             )
 
@@ -387,6 +393,10 @@ class TimeframeScanner:
                 market_structure=market_structure,
                 liquidity_map=liquidity,
             )
+            bias = "neutral"
+            if market_structure is not None:
+                bias = str(getattr(market_structure, "current_bias", "neutral"))
+            confluence_map = self._conf_engine.filter_by_bias(confluence_map, bias)
         except Exception as exc:
             self._log.warning(
                 "[%s/%s] confluence_engine failed: %s", symbol, timeframe, exc
@@ -401,6 +411,44 @@ class TimeframeScanner:
             current_price=current_price,
             scan_duration_ms=total_ms,
         )
+
+        # Zone Clustering — merge overlapping zones into unified setups
+        cluster_map = None
+        try:
+            cluster_map = self._cluster_engine.analyze(
+                snapshot, symbol, timeframe, df
+            )
+            self._log.info(
+                "[%s/%s] Clustering complete — clusters=%d  tradeable=%d  bias=%s",
+                symbol, timeframe,
+                cluster_map.total_count,
+                cluster_map.tradeable_count,
+                cluster_map.market_bias,
+            )
+        except Exception as exc:
+            self._log.warning("[%s/%s] Clustering failed: %s", symbol, timeframe, exc)
+
+        snapshot.cluster_map = cluster_map
+
+        # Entry points — best with-trend levels after analysis
+        entry_map = None
+        try:
+            entry_map = self._entry_engine.analyze(
+                symbol=symbol,
+                timeframe=timeframe,
+                current_price=current_price,
+                market_structure=market_structure,
+                cluster_map=cluster_map,
+                scoring_output=scoring_output,
+            )
+        except Exception as exc:
+            self._log.warning("[%s/%s] Entry engine failed: %s", symbol, timeframe, exc)
+
+        snapshot.entry_map = entry_map
+        try:
+            scoring_output.entry_map = entry_map  # type: ignore[attr-defined]
+        except Exception:
+            pass
 
         return snapshot, scoring_output
 
@@ -471,6 +519,7 @@ class TimeframeScanner:
             fvgs=fvg,
             supply_demand=sd,
             pois=poi,
+            df=df,
             engines_run=list(engines_run),
             engines_failed=list(engines_failed),
             scan_duration_ms=duration_ms,

@@ -180,6 +180,7 @@ class ConfluenceResult:
     zone_top: float
     zone_bottom: float
     zone_midpoint: float
+    premium_discount_zone: str = field(default="unknown")
     grade: Literal["A+", "A", "B", "C", "D"] = field(default="D")
     is_tradeable: bool = field(default=False)
 
@@ -300,6 +301,7 @@ class ConfluenceResult:
             "zone_top": round(self.zone_top, 4),
             "zone_bottom": round(self.zone_bottom, 4),
             "zone_midpoint": round(self.zone_midpoint, 4),
+            "premium_discount_zone": self.premium_discount_zone,
         }
 
 

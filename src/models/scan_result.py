@@ -55,6 +55,7 @@ class TimeframeScanResult:
     scan_duration_ms: float
     snapshot: Optional[object] = field(default=None)
     scoring_output: Optional[object] = field(default=None)
+    entry_map: Optional[object] = field(default=None)
     error_message: Optional[str] = field(default=None)
 
     def to_dict(self) -> dict:
@@ -80,5 +81,6 @@ class TimeframeScanResult:
             "scan_duration_ms": round(self.scan_duration_ms, 2),
             "snapshot": _safe_dict(self.snapshot),
             "scoring_output": _safe_dict(self.scoring_output),
+            "entry_map": _safe_dict(self.entry_map),
             "error_message": self.error_message,
         }

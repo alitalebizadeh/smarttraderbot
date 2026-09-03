@@ -47,7 +47,7 @@ logging:
 dashboard:
 
   # Directory where dashboard.html is written
-  output_dir: output_files
+  output_dir: /Users/alitalebizadeh/Documents/SmartTraderBot_output
 
   # Output HTML filename
   filename: dashboard.html

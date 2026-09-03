@@ -22,6 +22,9 @@ from src.utils.time_utils import (
     utcnow,
 )
 from src.utils.validators import validate_symbols, validate_timeframes
+from src.output.signals_exporter import export_signals
+from src.output.report_generator import generate_report
+from src.engine.entry_point_engine import export_entry_points
 
 # ─────────────────────────────────────────────
 #  Default configuration
@@ -211,14 +214,25 @@ def build_scanner(cfg: dict[str, Any], symbols: list[str], timeframes: list[str]
         Configured MarketScanner instance.
     """
     from src.scanner.market_scanner import MarketScanner
+    from src.scanner.timeframe_scanner import TimeframeScanner
+    from src.data.symbol_provider import SymbolProvider
+    from src.data.candle_provider import CandleProvider
+
+    from src.data.mt5_loader import MT5Loader
+    loader = MT5Loader(data_dir="data")
+    candle_provider = CandleProvider(loader=loader)
+    timeframe_scanner = TimeframeScanner(candle_provider=candle_provider)
+    symbol_provider = SymbolProvider(symbols=symbols, timeframes=timeframes)
 
     scanner_cfg = {
-        "symbols":          symbols,
-        "timeframes":       timeframes,
-        "interval_seconds": cfg["interval_seconds"],
-        "run_mode":         cfg["run_mode"],
+        "max_workers": 1,
+        "min_score_threshold": 0.0,
     }
-    return MarketScanner(config=scanner_cfg)
+    return MarketScanner(
+        timeframe_scanner=timeframe_scanner,
+        symbol_provider=symbol_provider,
+        config=scanner_cfg,
+    )
 
 
 def build_dashboard(cfg: dict[str, Any]) -> Any:
@@ -248,6 +262,8 @@ def run_single(
     dashboard: Any,
     cfg: dict[str, Any],
     logger: Any,
+    symbols: list[str] = None,
+    timeframes: list[str] = None,
 ) -> None:
     """Execute one full scan cycle and save the dashboard.
 
@@ -260,7 +276,8 @@ def run_single(
     logger.info("Starting single scan …")
     start = utcnow()
 
-    outputs = scanner.scan_all()
+    scan_result = scanner.run()
+    outputs = _build_outputs_from_scan(scan_result, symbols or [], timeframes or [])
 
     duration_ms = (utcnow() - start).total_seconds() * 1_000
     logger.info(
@@ -275,12 +292,28 @@ def run_single(
     else:
         logger.warning("Dashboard was not saved (render_and_save returned empty path).")
 
+    # Export signals.json for MT5 indicator
+    signals_path = export_signals(scan_result, output_dir=cfg["output_dir"])
+    if signals_path:
+        logger.info("signals.json saved: %s", signals_path)
+
+    # Generate trader-style analysis report
+    report_path = generate_report(scan_result, outputs, output_dir=cfg["output_dir"])
+    if report_path:
+        logger.info("Analysis report saved: %s", report_path)
+
+    entries_path = export_entry_points(scan_result, output_dir=cfg["output_dir"])
+    if entries_path:
+        logger.info("entry_points.json saved: %s", entries_path)
+
 
 def run_loop(
     scanner: Any,
     dashboard: Any,
     cfg: dict[str, Any],
     logger: Any,
+    symbols: list[str] = None,
+    timeframes: list[str] = None,
 ) -> None:
     """Run scan cycles continuously until interrupted.
 
@@ -307,7 +340,8 @@ def run_loop(
         )
 
         try:
-            outputs = scanner.scan_all()
+            scan_result = scanner.run()
+            outputs = _build_outputs_from_scan(scan_result, symbols or [], timeframes or [])
             duration_ms = (utcnow() - start_time).total_seconds() * 1_000
             logger.info(
                 "Scan complete — %d output(s) in %s.",
@@ -320,6 +354,10 @@ def run_loop(
                 logger.info("Dashboard saved: %s", path)
             else:
                 logger.warning("Dashboard was not saved.")
+
+            export_signals(scan_result, output_dir=cfg["output_dir"])
+            generate_report(scan_result, outputs, output_dir=cfg["output_dir"])
+            export_entry_points(scan_result, output_dir=cfg["output_dir"])
 
         except Exception as exc:
             logger.error("Error during scan cycle: %s", exc)
@@ -334,6 +372,41 @@ def run_loop(
 # ─────────────────────────────────────────────
 #  Entry point
 # ─────────────────────────────────────────────
+
+
+
+def _build_outputs_from_scan(
+    scan_result: Any,
+    symbols: list[str],
+    timeframes: list[str],
+) -> list[Any]:
+    """Convert a ScanResult to a list of ScoringOutput-compatible objects for dashboard.
+
+    Args:
+        scan_result: ScanResult from MarketScanner.run()
+        symbols: List of scanned symbols
+        timeframes: List of scanned timeframes
+
+    Returns:
+        List of objects compatible with Dashboard.render()
+    """
+    from src.models.scoring import ScoringOutput, ScanSummary
+    from src.utils.time_utils import utcnow
+
+    if scan_result is None:
+        return []
+
+    outputs = []
+    try:
+        tf_results = getattr(scan_result, "timeframe_results", []) or []
+        for tf_result in tf_results:
+            scoring_output = getattr(tf_result, "scoring_output", None)
+            if scoring_output is not None:
+                outputs.append(scoring_output)
+    except Exception:
+        pass
+
+    return outputs
 
 def main() -> None:
     """Entry point — orchestrates config loading, validation, and scan execution.
@@ -401,14 +474,12 @@ def main() -> None:
 
     try:
         if run_mode == "loop":
-            run_loop(scanner, dashboard, cfg, logger)
-    elif run_mode in ("single", "test"):
-        run_single(scanner, dashboard, cfg, logger)
-    else:
-        logger.warning("Unknown run_mode '%s' — falling back to single.", run_mode)
-        run_single(scanner, dashboard, cfg, logger)
+            run_loop(scanner, dashboard, cfg, logger, valid_symbols, valid_timeframes)
+        elif run_mode in ("single", "test"):
+            run_single(scanner, dashboard, cfg, logger, valid_symbols, valid_timeframes)
         else:
-            run_single(scanner, dashboard, cfg, logger)
+            logger.warning("Unknown run_mode '%s' — falling back to single.", run_mode)
+            run_single(scanner, dashboard, cfg, logger, valid_symbols, valid_timeframes)
 
     except KeyboardInterrupt:
         logger.info("Shutdown requested by user (Ctrl+C). Exiting cleanly.")
