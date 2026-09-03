@@ -424,7 +424,7 @@ class ZoneClusterEngine:
 
         has_ob = any(z.factor_type == "order_block" for z in group)
         has_fvg = any(z.factor_type == "fvg" for z in group)
-        if not (has_ob and has_fvg):
+        if not (has_ob or has_fvg):
             return None
 
         if not self._valid_zone(zone_top, zone_bottom):
