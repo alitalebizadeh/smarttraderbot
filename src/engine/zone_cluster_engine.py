@@ -489,11 +489,13 @@ class ZoneClusterEngine:
         if direction == "bearish":
             entry_ob  = min(z.zone_bottom for z in ob_factors)  if ob_factors  else None
             entry_fvg = min(z.zone_bottom for z in fvg_factors) if fvg_factors else None
-            stop_loss = max(z.zone_top for z in ob_factors) + (2 * self._pip_size) if ob_factors else None
+            sl_buffer = max((zone_top - zone_bottom) * 0.1, 10 * self._pip_size)
+            stop_loss = (max(z.zone_top for z in ob_factors) + sl_buffer) if ob_factors else None
         else:
             entry_ob  = min(z.zone_bottom for z in ob_factors)  if ob_factors  else None
             entry_fvg = min(z.zone_bottom for z in fvg_factors) if fvg_factors else None
-            stop_loss = min(z.zone_bottom for z in ob_factors) - (2 * self._pip_size) if ob_factors else None
+            sl_buffer = max((zone_top - zone_bottom) * 0.1, 10 * self._pip_size)
+            stop_loss = (min(z.zone_bottom for z in ob_factors) - sl_buffer) if ob_factors else None
 
         pd_zone = self._classify_pd(zone_midpoint, pd_range, direction)
 
