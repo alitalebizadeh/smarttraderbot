@@ -76,7 +76,8 @@ F_HTF   = "\u062a\u0627\u06cc\u0645\u200c\u0641\u0631\u06cc\u0645 \u0628\u0627\u
 class ReportGenerator:
     """Generates a Persian trader-style HTML analysis report."""
 
-    def __init__(self, output_dir: str = "output_files") -> None:
+    def __init__(self, output_dir: str = "output_files", pip_size: float = 0.01) -> None:
+        self._pip_size = pip_size
         self._output_dir = Path(output_dir)
         self._output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -222,10 +223,11 @@ li {{ margin-bottom: 6px; }}
             entry_ob = getattr(cluster, "entry_point_ob", None)
             entry_fvg = getattr(cluster, "entry_point_fvg", None)
             stop_loss = getattr(cluster, "stop_loss", None)
-            entry_ob_val  = float(entry_ob)  if entry_ob  is not None else zbottom
-            entry_fvg_val = float(entry_fvg) if entry_fvg is not None else zbottom
-            stop_val      = float(stop_loss) if stop_loss is not None else zbottom
-            risk_pips = abs(stop_val - entry_ob_val) / 0.01 if entry_ob_val else 0.0
+            direction = str(getattr(cluster, "direction", bias))
+            entry_ob_val  = float(entry_ob)  if entry_ob  is not None else (ztop if direction == "bullish" else zbottom)
+            entry_fvg_val = float(entry_fvg) if entry_fvg is not None else entry_ob_val
+            stop_val      = float(stop_loss) if stop_loss is not None else (zbottom - 2 * self._pip_size if direction == "bullish" else ztop + 2 * self._pip_size)
+            risk_pips = abs(stop_val - entry_ob_val) / self._pip_size if entry_ob_val and stop_val else 0.0
             signal_parts.append(f"""
 <div class="section setup-card {'bull' if direction == 'bullish' else 'bear'}">
   <h2>سیگنال #{rank} | {direction_fa} | امتیاز: {score:.1f}/100 | رتبه: {grade}</h2>
