@@ -52,6 +52,9 @@ class EntryPoint:
     status: Literal["in_zone", "awaiting_pullback", "invalidated"]
     reason: str
     rank: int = 1
+    ob_formation_time: str = ""
+    fvg_formation_time: str = ""
+    entry_time_suggestion: str = ""
 
     def to_dict(self) -> dict:
         return {
@@ -76,6 +79,9 @@ class EntryPoint:
             "status": self.status,
             "reason": self.reason,
             "rank": self.rank,
+            "ob_formation_time": self.ob_formation_time,
+            "fvg_formation_time": self.fvg_formation_time,
+            "entry_time_suggestion": self.entry_time_suggestion,
         }
 
 
@@ -251,7 +257,20 @@ class EntryPointEngine:
         score = float(getattr(cluster, "confluence_score", 0.0))
         grade = str(getattr(cluster, "grade", "D"))
         source_id = str(getattr(cluster, "cluster_id", "cluster"))
-        return self._build_entry(
+
+        # Extract formation times
+        ob_time = getattr(cluster, "ob_formation_time", None)
+        fvg_time = getattr(cluster, "fvg_formation_time", None)
+        entry_time = getattr(cluster, "entry_time_suggestion", None)
+
+        def _fmt(dt):
+            if dt is None:
+                return ""
+            if hasattr(dt, "strftime"):
+                return dt.strftime("%Y-%m-%d %H:%M")
+            return str(dt)
+
+        entry = self._build_entry(
             symbol=str(getattr(cluster, "symbol", "")),
             timeframe=str(getattr(cluster, "timeframe", "")),
             direction=bias,  # type: ignore[arg-type]
@@ -265,6 +284,11 @@ class EntryPointEngine:
             grade=grade,
             current_price=current_price,
         )
+        if entry is not None:
+            entry.ob_formation_time = _fmt(ob_time)
+            entry.fvg_formation_time = _fmt(fvg_time)
+            entry.entry_time_suggestion = _fmt(entry_time)
+        return entry
 
     def _from_score_result(
         self, result: Any, current_price: float, bias: str
