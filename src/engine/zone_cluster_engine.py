@@ -93,7 +93,7 @@ class ZoneClusterEngine:
     def __init__(
         self,
         pip_size: float = 0.01,
-        cluster_tolerance_pips: float = 20.0,
+        cluster_tolerance_pips: float = 50.0,
         min_factors: int = 1,
     ) -> None:
         self._pip_size    = pip_size
@@ -281,7 +281,7 @@ class ZoneClusterEngine:
                     description=f"{label} OB at {bottom:.2f}–{top:.2f}",
                     zone_id=str(getattr(ob, "ob_id", "")),
                     is_broken_retested=bool(getattr(ob, "is_broken_retested", False)),
-                    ob_time=getattr(ob, "candle_time", getattr(ob, "origin_time", None)),
+                    ob_time=getattr(ob, "origin_time", getattr(ob, "candle_time", None)),
                 ))
 
         # --- FVGs ---
@@ -487,12 +487,12 @@ class ZoneClusterEngine:
         ob_factors = [z for z in group if z.factor_type == "order_block"]
         fvg_factors = [z for z in group if z.factor_type == "fvg"]
         if direction == "bearish":
-            entry_ob = min(z.zone_bottom for z in ob_factors) if ob_factors else None
+            entry_ob  = min(z.zone_bottom for z in ob_factors)  if ob_factors  else None
             entry_fvg = min(z.zone_bottom for z in fvg_factors) if fvg_factors else None
             stop_loss = max(z.zone_top for z in ob_factors) + (2 * self._pip_size) if ob_factors else None
         else:
-            entry_ob = max(z.zone_top for z in ob_factors) if ob_factors else None
-            entry_fvg = max(z.zone_top for z in fvg_factors) if fvg_factors else None
+            entry_ob  = min(z.zone_bottom for z in ob_factors)  if ob_factors  else None
+            entry_fvg = min(z.zone_bottom for z in fvg_factors) if fvg_factors else None
             stop_loss = min(z.zone_bottom for z in ob_factors) - (2 * self._pip_size) if ob_factors else None
 
         pd_zone = self._classify_pd(zone_midpoint, pd_range, direction)

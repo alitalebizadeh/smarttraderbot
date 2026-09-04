@@ -241,15 +241,17 @@ class OrderBlockEngine:
         if not self._validate(df, symbol, timeframe):
             return empty
 
-        df = df.reset_index(drop=True)
-
-        # Resolve timestamps
-        if "timestamp" in df.columns:
+        # Save timestamps before resetting index
+        if df.index.name == "time" or isinstance(df.index, pd.DatetimeIndex):
+            timestamps = df.index.tolist()
+        elif "timestamp" in df.columns:
             timestamps = df["timestamp"].tolist()
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
             timestamps = [datetime.utcnow()] * len(df)
+
+        df = df.reset_index(drop=True)
 
         # Obtain displacement list
         displacements: list[Any]
