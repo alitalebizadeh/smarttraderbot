@@ -191,7 +191,7 @@ class ZoneClusterEngine:
             if len(group) < self._min_factors:
                 continue
             cluster = self._build_cluster(
-                group, idx, symbol, timeframe, direction, pd_range
+                group, idx, symbol, timeframe, direction, pd_range, candles
             )
             if cluster is not None:
                 clusters.append(cluster)
@@ -396,6 +396,7 @@ class ZoneClusterEngine:
         timeframe: str,
         direction: Literal["bullish", "bearish"],
         pd_range: Optional[tuple[float, float]],
+        candles: Any = None,
     ) -> Optional[ZoneCluster]:
         """Build a :class:`~src.models.zone_cluster.ZoneCluster` from a group.
 
