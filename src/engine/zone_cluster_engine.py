@@ -752,6 +752,27 @@ class ZoneClusterEngine:
     # Helpers
     # ------------------------------------------------------------------
 
+    def _find_entry_time(self, candles: Any, zone_bottom: float, zone_top: float, direction: str, after_time: Any) -> Any:
+        """اولین کندلی که بعد از تشکیل سیگنال به zone برمیگرده."""
+        try:
+            import pandas as pd
+            if candles is None or not hasattr(candles, 'index'):
+                return None
+            after_ts = pd.Timestamp(after_time)
+            if after_ts.tzinfo is None:
+                after_ts = after_ts.tz_localize('UTC')
+            df_after = candles[candles.index > after_ts]
+            if df_after.empty:
+                return None
+            for ts, row in df_after.iterrows():
+                low = float(row['low'])
+                high = float(row['high'])
+                if low <= zone_top and high >= zone_bottom:
+                    return ts
+            return None
+        except Exception:
+            return None
+
     def _classify_pd(
         self,
         midpoint: float,
