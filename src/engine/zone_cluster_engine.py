@@ -294,9 +294,7 @@ class ZoneClusterEngine:
             ) or []
 
             for fvg in fvg_list:
-                if getattr(fvg, "fill_status", "filled") == "filled":
-                    continue
-                if not getattr(fvg, "is_valid", True):
+                if getattr(fvg, "is_filled", False):
                     continue
                 top    = float(getattr(fvg, "gap_top",    0.0))
                 bottom = float(getattr(fvg, "gap_bottom", 0.0))
