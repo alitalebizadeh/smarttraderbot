@@ -481,7 +481,9 @@ class ZoneClusterEngine:
         fvg_times = [z.fvg_time for z in group if z.factor_type == "fvg" and z.fvg_time is not None]
         ob_time = min(ob_times) if ob_times else None
         fvg_time = min(fvg_times) if fvg_times else None
-        entry_time = max(ob_time, fvg_time) + timedelta(minutes=1) if ob_time and fvg_time else None
+        # entry_time = اولین کندلی که بعد از آخرین سیگنال به zone برمیگرده
+        last_signal_time = max(ob_time, fvg_time) if ob_time and fvg_time else (ob_time or fvg_time)
+        entry_time = self._find_entry_time(candles, zone_bottom, zone_top, direction, last_signal_time) if candles is not None and last_signal_time else None
         ob_factors = [z for z in group if z.factor_type == "order_block"]
         fvg_factors = [z for z in group if z.factor_type == "fvg"]
         if direction == "bearish":
