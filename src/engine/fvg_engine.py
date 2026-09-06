@@ -240,19 +240,21 @@ class FVGEngine:
         if not self._validate(df, symbol, timeframe):
             return empty
 
+        # Save timestamps before resetting index
+        if df.index.name == "time" or isinstance(df.index, pd.DatetimeIndex):
+            timestamps = df.index.tolist()
+        elif "timestamp" in df.columns:
+            timestamps = df["timestamp"].tolist()
+        elif "time" in df.columns:
+            timestamps = df["time"].tolist()
+        else:
+            timestamps = [datetime.utcnow()] * len(df)
+
         df = df.reset_index(drop=True)
         n = len(df)
 
         highs = df["high"].to_numpy(dtype=float)
         lows  = df["low"].to_numpy(dtype=float)
-
-        # Resolve timestamps
-        if "timestamp" in df.columns:
-            timestamps = df["timestamp"].tolist()
-        elif "time" in df.columns:
-            timestamps = df["time"].tolist()
-        else:
-            timestamps = [datetime.utcnow()] * n
 
         pip_size      = self._estimate_pip_size(df)
         min_gap_size  = self.min_gap_pips * pip_size

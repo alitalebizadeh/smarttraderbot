@@ -310,7 +310,7 @@ class ZoneClusterEngine:
                     strength=0.65,
                     description=f"FVG at {bottom:.2f}–{top:.2f}",
                     zone_id=str(getattr(fvg, "fvg_id", "")),
-                    fvg_time=getattr(fvg, "candle_time", None),
+                    fvg_time=getattr(fvg, "formation_time", getattr(fvg, "candle_time", None)),
                 ))
 
         # --- Supply / Demand ---
