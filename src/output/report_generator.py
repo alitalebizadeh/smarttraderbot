@@ -225,9 +225,15 @@ li {{ margin-bottom: 6px; }}
             stop_loss = getattr(cluster, "stop_loss", None)
             direction = str(getattr(cluster, "direction", bias))
             entry_ob_val  = float(entry_ob)  if entry_ob  is not None else (ztop if direction == "bullish" else zbottom)
+            # برای bullish: ورود از FVG بهتره چون نزدیک‌تره
+            # برای bearish: ورود از بالای FVG
             entry_fvg_val = float(entry_fvg) if entry_fvg is not None else entry_ob_val
+            # primary entry = FVG اگه وجود داشت، وگرنه OB
+            primary_entry = entry_fvg_val if entry_fvg is not None else entry_ob_val
             stop_val      = float(stop_loss) if stop_loss is not None else (zbottom - 2 * self._pip_size if direction == "bullish" else ztop + 2 * self._pip_size)
             risk_pips = abs(stop_val - entry_ob_val) / self._pip_size if entry_ob_val and stop_val else 0.0
+            if risk_pips > 300:
+                continue  # زون خیلی بزرگ — فیلتر میشه
             signal_parts.append(f"""
 <div class="section setup-card {'bull' if direction == 'bullish' else 'bear'}">
   <h2>سیگنال #{rank} | {direction_fa} | امتیاز: {score:.1f}/100 | رتبه: {grade}</h2>
