@@ -9,28 +9,18 @@ __all__ = ["SwingPoint", "MarketStructureEvent", "MarketStructure"]
 
 @dataclass(eq=True)
 class SwingPoint:
-    """A confirmed Swing High or Swing Low on the price chart.
-
-    Attributes:
-        index: Zero-based candle index in the source DataFrame.
-        time: UTC timestamp of the candle.
-        price: Exact price of the swing — High for swing highs, Low for swing lows.
-        swing_type: ``"high"`` for a Swing High, ``"low"`` for a Swing Low.
-        is_confirmed: ``True`` when at least two subsequent candles have confirmed the swing.
-    """
+    """A confirmed Swing High or Swing Low on the price chart."""
 
     index: int
     time: datetime
     price: float
     swing_type: Literal["high", "low"]
     is_confirmed: bool = field(default=False)
+    strength_score: float = field(default=0.0)
+    swing_scale: Literal["internal", "external"] = field(default="internal")
 
     def __post_init__(self) -> None:
-        """Validate field values after initialisation.
-
-        Raises:
-            ValueError: If ``price`` is not positive or ``index`` is negative.
-        """
+        """Validate field values after initialisation."""
         if self.price <= 0:
             raise ValueError(
                 f"SwingPoint.price must be > 0, got {self.price}."
@@ -39,20 +29,25 @@ class SwingPoint:
             raise ValueError(
                 f"SwingPoint.index must be >= 0, got {self.index}."
             )
+        if not 0.0 <= self.strength_score <= 100.0:
+            raise ValueError(
+                f"SwingPoint.strength_score must be in [0, 100], got {self.strength_score}."
+            )
+        if self.swing_scale not in {"internal", "external"}:
+            raise ValueError(
+                f"SwingPoint.swing_scale must be 'internal' or 'external', got {self.swing_scale}."
+            )
 
     def to_dict(self) -> dict:
-        """Serialise to a JSON-compatible dictionary.
-
-        Returns:
-            A flat dictionary with all fields serialised to JSON-safe types.
-            ``datetime`` values are converted to ISO 8601 strings.
-        """
+        """Serialise to a JSON-compatible dictionary."""
         return {
             "index": self.index,
             "time": self.time.isoformat(),
             "price": self.price,
             "swing_type": self.swing_type,
             "is_confirmed": self.is_confirmed,
+            "strength_score": self.strength_score,
+            "swing_scale": self.swing_scale,
         }
 
 

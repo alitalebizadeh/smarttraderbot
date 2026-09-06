@@ -4,6 +4,7 @@ import logging
 from datetime import datetime
 from typing import Literal, Optional
 
+import numpy as np
 import pandas as pd
 
 from src.models.market_structure import (
@@ -236,6 +237,7 @@ class MarketStructureEngine:
                     if hasattr(raw_time, "to_pydatetime")
                     else datetime.utcfromtimestamp(float(raw_time))
                 )
+                strength_score, scale = self._classify_swing_strength(df, i, float(pivot_high), "high")
                 swing_highs.append(
                     SwingPoint(
                         index=i,
@@ -243,6 +245,8 @@ class MarketStructureEngine:
                         price=float(pivot_high),
                         swing_type="high",
                         is_confirmed=True,
+                        strength_score=strength_score,
+                        swing_scale=scale,
                     )
                 )
 
@@ -259,6 +263,7 @@ class MarketStructureEngine:
                     if hasattr(raw_time, "to_pydatetime")
                     else datetime.utcfromtimestamp(float(raw_time))
                 )
+                strength_score, scale = self._classify_swing_strength(df, i, float(pivot_low), "low")
                 swing_lows.append(
                     SwingPoint(
                         index=i,
@@ -266,10 +271,232 @@ class MarketStructureEngine:
                         price=float(pivot_low),
                         swing_type="low",
                         is_confirmed=True,
+                        strength_score=strength_score,
+                        swing_scale=scale,
                     )
                 )
 
         return swing_highs, swing_lows
+
+    def _calculate_atr(self, df: pd.DataFrame, lookback: int = 14) -> np.ndarray:
+        """Calculate a rolling ATR array using the true range formula."""
+        if df is None or df.empty or not {"high", "low", "close"}.issubset(df.columns):
+            return np.zeros(len(df), dtype=float)
+
+        highs = df["high"].to_numpy(dtype=float)
+        lows = df["low"].to_numpy(dtype=float)
+        closes = df["close"].to_numpy(dtype=float)
+        true_ranges: list[float] = []
+
+        for idx in range(len(df)):
+            if idx == 0:
+                true_ranges.append(float(highs[idx] - lows[idx]))
+                continue
+            tr = max(
+                float(highs[idx] - lows[idx]),
+                abs(float(highs[idx] - closes[idx - 1])),
+                abs(float(lows[idx] - closes[idx - 1])),
+            )
+            true_ranges.append(float(tr))
+
+        atr = pd.Series(true_ranges, index=df.index).rolling(window=lookback, min_periods=1).mean().to_numpy(dtype=float)
+        return atr
+
+    def _estimate_atr(self, df: pd.DataFrame, index: int, lookback: int = 14) -> float:
+        """Return ATR at the given index, minimal value of 1e-9 to avoid division by zero."""
+        if df is None or df.empty or index < 0 or index >= len(df):
+            return 0.0
+        if {"high", "low", "close"}.difference(df.columns):
+            return 0.0
+
+        start = max(0, index - lookback)
+        window = df.iloc[start:index + 1].copy()
+        if window.empty:
+            return 0.0
+
+        high = window["high"].to_numpy(dtype=float)
+        low = window["low"].to_numpy(dtype=float)
+        close = window["close"].to_numpy(dtype=float)
+        tr = []
+        for i in range(len(window)):
+            if i == 0:
+                tr.append(float(high[i] - low[i]))
+            else:
+                tr.append(
+                    max(
+                        float(high[i] - low[i]),
+                        abs(float(high[i] - close[i - 1])),
+                        abs(float(low[i] - close[i - 1])),
+                    )
+                )
+        if not tr:
+            return 0.0
+        return float(sum(tr) / len(tr))
+
+    def _score_break_context(
+        self,
+        df: pd.DataFrame,
+        index: int,
+        level: float,
+        close: float,
+        direction: Literal["bullish", "bearish"],
+    ) -> float:
+        """Return a contextual BOS/CHoCH score based on the relative move and confirmation."""
+        atr_value = self._estimate_atr(df, index)
+        if atr_value <= 0:
+            return 0.0
+
+        score = 0.0
+        distance = abs(close - level)
+        ratio = distance / atr_value
+
+        if direction == "bullish" and close > level:
+            score += 30.0
+        elif direction == "bearish" and close < level:
+            score += 30.0
+
+        score += min(25.0, max(0.0, ratio - 0.5) * 25.0)
+
+        prev_close = float(df["close"].iloc[index - 1]) if index > 0 else close
+        body = abs(close - prev_close)
+        score += min(20.0, max(0.0, body / atr_value) * 15.0)
+
+        follow_through = 0
+        limit = min(len(df), index + 3)
+        for j in range(index + 1, limit):
+            next_close = float(df["close"].iloc[j])
+            if direction == "bullish" and next_close > level:
+                follow_through += 1
+            elif direction == "bearish" and next_close < level:
+                follow_through += 1
+        score += min(15.0, follow_through * 10.0)
+
+        if direction == "bullish":
+            recent_trend = float(df["close"].iloc[max(0, index - 5):index].mean()) if index >= 1 else close
+            if close > recent_trend:
+                score += 10.0
+        else:
+            recent_trend = float(df["close"].iloc[max(0, index - 5):index].mean()) if index >= 1 else close
+            if close < recent_trend:
+                score += 10.0
+
+        return score
+
+    def _has_liquidity_grab(
+        self,
+        df: pd.DataFrame,
+        index: int,
+        level: float,
+        direction: Literal["bullish", "bearish"],
+    ) -> bool:
+        """Detect a sweep beyond the relevant level before reversal."""
+        start = max(0, index - 5)
+        window = df.iloc[start:index + 1]
+        if window.empty:
+            return False
+
+        if direction == "bullish":
+            prior_low = float(window["low"].iloc[:-1].min()) if len(window) > 1 else float(window["low"].iloc[0])
+            return prior_low < level and float(df["close"].iloc[index]) > level
+
+        prior_high = float(window["high"].iloc[:-1].max()) if len(window) > 1 else float(window["high"].iloc[0])
+        return prior_high > level and float(df["close"].iloc[index]) < level
+
+    def _is_valid_bos_break(
+        self,
+        df: pd.DataFrame,
+        index: int,
+        close: float,
+        level: float,
+        atr_value: float,
+        displacement: float,
+        direction: Literal["bullish", "bearish"],
+    ) -> bool:
+        """Use a relative score model instead of a single hard threshold."""
+        if index < 0 or atr_value <= 0:
+            return False
+
+        score = self._score_break_context(df, index, level, close, direction)
+        if score < 70.0:
+            return False
+
+        if direction == "bullish":
+            return close > level and displacement > atr_value * 0.35 and score >= 70.0
+        return close < level and displacement > atr_value * 0.35 and score >= 70.0
+
+    def _is_valid_choch_break(
+        self,
+        df: pd.DataFrame,
+        index: int,
+        close: float,
+        level: float,
+        atr_value: float,
+        direction: Literal["bullish", "bearish"],
+    ) -> bool:
+        """CHoCH uses a separate reversal model: sweep + rejection + opposite structure break + confirmation."""
+        if index <= 0 or atr_value <= 0:
+            return False
+
+        prev_close = float(df["close"].iloc[index - 1])
+        displacement = abs(close - prev_close)
+        if displacement <= atr_value * 0.25:
+            return False
+
+        sweep = self._has_liquidity_grab(df, index, level, direction)
+        if not sweep:
+            return False
+
+        score = 0.0
+        if direction == "bullish":
+            if close > level:
+                score += 30.0
+            if close > max(float(df["close"].iloc[max(0, index - 3):index].max()), prev_close):
+                score += 25.0
+            if displacement > atr_value * 0.4:
+                score += 20.0
+            if index + 1 < len(df) and float(df["close"].iloc[index + 1]) > close:
+                score += 15.0
+            if close > float(df["close"].iloc[max(0, index - 5):index].mean()):
+                score += 10.0
+            return score >= 70.0
+
+        if close < level:
+            score += 30.0
+        if close < min(float(df["close"].iloc[max(0, index - 3):index].min()), prev_close):
+            score += 25.0
+        if displacement > atr_value * 0.4:
+            score += 20.0
+        if index + 1 < len(df) and float(df["close"].iloc[index + 1]) < close:
+            score += 15.0
+        if close < float(df["close"].iloc[max(0, index - 5):index].mean()):
+            score += 10.0
+        return score >= 70.0
+
+    def _classify_swing_strength(
+        self,
+        df: pd.DataFrame,
+        index: int,
+        price: float,
+        swing_type: Literal["high", "low"],
+    ) -> tuple[float, Literal["internal", "external"]]:
+        """Classify swings as internal or external based on local relative strength."""
+        atr_value = self._estimate_atr(df, index)
+        if atr_value <= 0:
+            return 0.0, "internal"
+
+        start = max(0, index - 10)
+        end = min(len(df), index + 11)
+        local_window = df.iloc[start:end]
+        if swing_type == "high":
+            local_low = float(local_window["low"].min())
+            strength = max(0.0, (price - local_low) / atr_value * 25.0)
+        else:
+            local_high = float(local_window["high"].max())
+            strength = max(0.0, (local_high - price) / atr_value * 25.0)
+
+        if strength >= 60.0:
+            return min(100.0, strength), "external"
+        return min(100.0, strength), "internal"
 
     # ── Private: Event Detection ──────────────────────────────────────────
 
@@ -281,33 +508,18 @@ class MarketStructureEngine:
         symbol: str = "",
         timeframe: str = "",
     ) -> tuple[list[MarketStructureEvent], Literal["bullish", "bearish", "neutral"]]:
-        """Detect BOS and CHoCH events by iterating candles chronologically.
-
-        Tracks the most recent confirmed Swing High and Swing Low as price
-        progresses. On each candle, checks whether the close has broken
-        either level and classifies the break as BOS or CHoCH based on
-        the current market bias.
-
-        Args:
-            df: Validated OHLCV DataFrame.
-            swing_highs: Confirmed swing highs sorted by candle index.
-            swing_lows: Confirmed swing lows sorted by candle index.
-
-        Returns:
-            Tuple of (events list, final bias string).
-        """
+        """Detect BOS and CHoCH events with confirmation rules instead of simple breaks."""
         if not swing_highs and not swing_lows:
             return [], "neutral"
 
-        closes = df["close"].to_numpy()
+        closes = df["close"].to_numpy(dtype=float)
         index_vals = df.index
         n = len(df)
+        atr_values = self._calculate_atr(df)
 
         events: list[MarketStructureEvent] = []
         current_bias: Literal["bullish", "bearish", "neutral"] = "neutral"
 
-        # Build index-keyed lookups for O(1) access as we iterate
-        # Maps candle_index → SwingPoint
         high_by_idx: dict[int, SwingPoint] = {sp.index: sp for sp in swing_highs}
         low_by_idx: dict[int, SwingPoint] = {sp.index: sp for sp in swing_lows}
 
@@ -315,7 +527,6 @@ class MarketStructureEngine:
         last_confirmed_low: Optional[SwingPoint] = None
 
         for i in range(n):
-            # Update last known confirmed swing points up to this candle
             if i in high_by_idx:
                 last_confirmed_high = high_by_idx[i]
             if i in low_by_idx:
@@ -328,26 +539,25 @@ class MarketStructureEngine:
                 if hasattr(raw_time, "to_pydatetime")
                 else datetime.utcfromtimestamp(float(raw_time))
             )
+            atr_value = float(atr_values[i]) if i < len(atr_values) else 0.0
 
-            # ── Bullish bias checks ────────────────────────────────────
             if current_bias == "bullish":
-                # BOS bullish: close above last confirmed high (trend continues)
-                if last_confirmed_high is not None and close > last_confirmed_high.price:
-                    events.append(MarketStructureEvent(
-                        event_type="BOS",
-                        direction="bullish",
-                        broken_swing=last_confirmed_high,
-                        break_candle_index=i,
-                        break_candle_time=candle_time,
-                        break_price=close,
-                        symbol=symbol,
-                        timeframe=timeframe,
-                    ))
-                    # Reset so same level doesn't trigger again
-                    last_confirmed_high = None
-
-                # CHoCH: close below last confirmed low (trend reversal)
-                elif last_confirmed_low is not None and close < last_confirmed_low.price:
+                if last_confirmed_high is not None:
+                    displacement = abs(close - closes[i - 1]) if i > 0 else 0.0
+                    if self._is_valid_bos_break(df, i, close, last_confirmed_high.price, atr_value, displacement, "bullish"):
+                        events.append(MarketStructureEvent(
+                            event_type="BOS",
+                            direction="bullish",
+                            broken_swing=last_confirmed_high,
+                            break_candle_index=i,
+                            break_candle_time=candle_time,
+                            break_price=close,
+                            symbol=symbol,
+                            timeframe=timeframe,
+                        ))
+                        current_bias = "bullish"
+                        last_confirmed_high = None
+                if last_confirmed_low is not None and self._is_valid_choch_break(df, i, close, last_confirmed_low.price, atr_value, "bearish"):
                     events.append(MarketStructureEvent(
                         event_type="CHoCH",
                         direction="bearish",
@@ -361,24 +571,23 @@ class MarketStructureEngine:
                     current_bias = "bearish"
                     last_confirmed_low = None
 
-            # ── Bearish bias checks ────────────────────────────────────
             elif current_bias == "bearish":
-                # BOS bearish: close below last confirmed low (trend continues)
-                if last_confirmed_low is not None and close < last_confirmed_low.price:
-                    events.append(MarketStructureEvent(
-                        event_type="BOS",
-                        direction="bearish",
-                        broken_swing=last_confirmed_low,
-                        break_candle_index=i,
-                        break_candle_time=candle_time,
-                        break_price=close,
-                        symbol=symbol,
-                        timeframe=timeframe,
-                    ))
-                    last_confirmed_low = None
-
-                # CHoCH: close above last confirmed high (trend reversal)
-                elif last_confirmed_high is not None and close > last_confirmed_high.price:
+                if last_confirmed_low is not None:
+                    displacement = abs(close - closes[i - 1]) if i > 0 else 0.0
+                    if self._is_valid_bos_break(df, i, close, last_confirmed_low.price, atr_value, displacement, "bearish"):
+                        events.append(MarketStructureEvent(
+                            event_type="BOS",
+                            direction="bearish",
+                            broken_swing=last_confirmed_low,
+                            break_candle_index=i,
+                            break_candle_time=candle_time,
+                            break_price=close,
+                            symbol=symbol,
+                            timeframe=timeframe,
+                        ))
+                        current_bias = "bearish"
+                        last_confirmed_low = None
+                if last_confirmed_high is not None and self._is_valid_choch_break(df, i, close, last_confirmed_high.price, atr_value, "bullish"):
                     events.append(MarketStructureEvent(
                         event_type="CHoCH",
                         direction="bullish",
@@ -392,11 +601,53 @@ class MarketStructureEngine:
                     current_bias = "bullish"
                     last_confirmed_high = None
 
-            # ── Neutral bias: first break sets the bias ────────────────
             else:
-                if last_confirmed_high is not None and close > last_confirmed_high.price:
+                if last_confirmed_high is not None:
+                    displacement = abs(close - closes[i - 1]) if i > 0 else 0.0
+                    if self._is_valid_bos_break(df, i, close, last_confirmed_high.price, atr_value, displacement, "bullish"):
+                        events.append(MarketStructureEvent(
+                            event_type="BOS",
+                            direction="bullish",
+                            broken_swing=last_confirmed_high,
+                            break_candle_index=i,
+                            break_candle_time=candle_time,
+                            break_price=close,
+                            symbol=symbol,
+                            timeframe=timeframe,
+                        ))
+                        current_bias = "bullish"
+                        last_confirmed_high = None
+                elif last_confirmed_low is not None and self._is_valid_choch_break(df, i, close, last_confirmed_low.price, atr_value, "bearish"):
                     events.append(MarketStructureEvent(
-                        event_type="BOS",
+                        event_type="CHoCH",
+                        direction="bearish",
+                        broken_swing=last_confirmed_low,
+                        break_candle_index=i,
+                        break_candle_time=candle_time,
+                        break_price=close,
+                        symbol=symbol,
+                        timeframe=timeframe,
+                    ))
+                    current_bias = "bearish"
+                    last_confirmed_low = None
+                elif last_confirmed_low is not None:
+                    displacement = abs(close - closes[i - 1]) if i > 0 else 0.0
+                    if self._is_valid_bos_break(df, i, close, last_confirmed_low.price, atr_value, displacement, "bearish"):
+                        events.append(MarketStructureEvent(
+                            event_type="BOS",
+                            direction="bearish",
+                            broken_swing=last_confirmed_low,
+                            break_candle_index=i,
+                            break_candle_time=candle_time,
+                            break_price=close,
+                            symbol=symbol,
+                            timeframe=timeframe,
+                        ))
+                        current_bias = "bearish"
+                        last_confirmed_low = None
+                if last_confirmed_high is not None and self._is_valid_choch_break(df, i, close, last_confirmed_high.price, atr_value, "bullish"):
+                    events.append(MarketStructureEvent(
+                        event_type="CHoCH",
                         direction="bullish",
                         broken_swing=last_confirmed_high,
                         break_candle_index=i,
@@ -408,19 +659,8 @@ class MarketStructureEngine:
                     current_bias = "bullish"
                     last_confirmed_high = None
 
-                elif last_confirmed_low is not None and close < last_confirmed_low.price:
-                    events.append(MarketStructureEvent(
-                        event_type="BOS",
-                        direction="bearish",
-                        broken_swing=last_confirmed_low,
-                        break_candle_index=i,
-                        break_candle_time=candle_time,
-                        break_price=close,
-                        symbol=symbol,
-                        timeframe=timeframe,
-                    ))
-                    current_bias = "bearish"
-                    last_confirmed_low = None
+        if not events:
+            return [], self._determine_bias_from_swings(swing_highs, swing_lows)
 
         return events, current_bias
 
