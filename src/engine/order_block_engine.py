@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 import numpy as np
@@ -234,7 +234,7 @@ class OrderBlockEngine:
         empty = OrderBlockResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df) if isinstance(df, pd.DataFrame) else 0,
         )
 
@@ -249,7 +249,7 @@ class OrderBlockEngine:
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
-            timestamps = [datetime.utcnow()] * len(df)
+            timestamps = [datetime.now(tz=timezone.utc)] * len(df)
 
         df = df.reset_index(drop=True)
 
@@ -351,7 +351,7 @@ class OrderBlockEngine:
         return OrderBlockResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df),
             bullish_obs=bullish_obs,
             bearish_obs=bearish_obs,
@@ -643,7 +643,7 @@ class OrderBlockEngine:
         Returns
         -------
         datetime
-            UTC ``datetime``.  Falls back to ``datetime.utcnow()`` on error.
+            UTC ``datetime``.  Falls back to the current timezone-aware UTC time on error.
         """
         try:
             ts = timestamps[idx]
@@ -651,7 +651,7 @@ class OrderBlockEngine:
                 return ts
             return pd.Timestamp(ts).to_pydatetime()
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(tz=timezone.utc)
 
 
 # ---------------------------------------------------------------------------

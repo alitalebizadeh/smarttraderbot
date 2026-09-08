@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 from src.models.confluence import ConfluenceMap, ConfluenceResult, FactorScore
@@ -158,7 +158,7 @@ class ConfluenceEngine:
         return ConfluenceMap(
             symbol=symbol,
             timeframe=timeframe,
-            scanned_at=datetime.utcnow(),
+            scanned_at=datetime.now(tz=timezone.utc),
             results=results,
             tradeable=tradeable,
             top_result=top_result,
@@ -269,7 +269,7 @@ class ConfluenceEngine:
             symbol=getattr(poi, "symbol", ""),
             timeframe=getattr(poi, "timeframe", ""),
             direction=getattr(poi, "direction", "bullish"),
-            evaluated_at=datetime.utcnow(),
+            evaluated_at=datetime.now(tz=timezone.utc),
             factor_scores=factor_scores,
             total_score=total_score,
             max_possible=MAX_SCORE,
@@ -399,7 +399,7 @@ class ConfluenceEngine:
             try:
                 poi.has_liquidity_sweep = True
             except AttributeError:
-                pass
+                self._logger.debug("POI does not support liquidity-sweep mutation")
 
             sweep_type  = getattr(recent_sweep, "sweep_type", "sweep")
             swept_level = getattr(recent_sweep, "swept_level", None)
@@ -607,7 +607,7 @@ class ConfluenceEngine:
         return ConfluenceMap(
             symbol=symbol,
             timeframe=timeframe,
-            scanned_at=datetime.utcnow(),
+            scanned_at=datetime.now(tz=timezone.utc),
             results=[],
             tradeable=[],
             top_result=None,

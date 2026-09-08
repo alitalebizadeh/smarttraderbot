@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import numpy as np
@@ -241,7 +241,7 @@ class SupplyDemandEngine:
         empty = SupplyDemandResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df) if isinstance(df, pd.DataFrame) else 0,
         )
 
@@ -257,7 +257,7 @@ class SupplyDemandEngine:
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
-            timestamps = [datetime.utcnow()] * n
+            timestamps = [datetime.now(tz=timezone.utc)] * n
 
         atr    = self._compute_atr(df)
         bases  = self._find_bases(df, atr)
@@ -352,7 +352,7 @@ class SupplyDemandEngine:
         return SupplyDemandResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=n,
             supply_zones=supply_zones,
             demand_zones=demand_zones,
@@ -695,7 +695,7 @@ class SupplyDemandEngine:
         Returns
         -------
         datetime
-            UTC ``datetime``.  Falls back to ``datetime.utcnow()`` on error.
+            UTC ``datetime``.  Falls back to the current timezone-aware UTC time on error.
         """
         try:
             ts = timestamps[idx]
@@ -703,7 +703,7 @@ class SupplyDemandEngine:
                 return ts
             return pd.Timestamp(ts).to_pydatetime()
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(tz=timezone.utc)
 
 
 # ---------------------------------------------------------------------------

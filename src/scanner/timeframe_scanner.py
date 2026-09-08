@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import pandas as pd
@@ -167,7 +167,7 @@ class TimeframeScanner:
                 timeframe=timeframe,
                 display_name=display_name,
                 success=True,
-                scanned_at=datetime.utcnow(),
+                scanned_at=datetime.now(tz=timezone.utc),
                 scan_duration_ms=duration_ms,
                 snapshot=snapshot,
                 scoring_output=scoring_output,
@@ -187,7 +187,7 @@ class TimeframeScanner:
                 timeframe=timeframe,
                 display_name=display_name,
                 success=False,
-                scanned_at=datetime.utcnow(),
+                scanned_at=datetime.now(tz=timezone.utc),
                 scan_duration_ms=duration_ms,
                 snapshot=None,
                 scoring_output=None,
@@ -243,8 +243,8 @@ class TimeframeScanner:
             price = self._provider.get_latest_price(symbol, timeframe)
             if price is not None:
                 current_price = float(price)
-        except Exception:
-            pass
+        except Exception as exc:
+            self._log.warning("[%s/%s] Latest-price lookup failed: %s", symbol, timeframe, exc)
 
         if current_price == 0.0 and "close" in df.columns and len(df) >= _MIN_CANDLES_FOR_PRICE:
             current_price = float(df["close"].iloc[-1])
@@ -449,8 +449,8 @@ class TimeframeScanner:
         snapshot.entry_map = entry_map
         try:
             scoring_output.entry_map = entry_map  # type: ignore[attr-defined]
-        except Exception:
-            pass
+        except AttributeError as exc:
+            self._log.debug("[%s/%s] Scoring output does not support entry_map: %s", symbol, timeframe, exc)
 
         return snapshot, scoring_output
 
@@ -511,7 +511,7 @@ class TimeframeScanner:
             snapshot_id=snapshot_id,
             symbol=symbol,
             timeframe=timeframe,
-            captured_at=datetime.utcnow(),
+            captured_at=datetime.now(tz=timezone.utc),
             current_price=current_price,
             candle_count=candle_count,
             market_structure=ms,

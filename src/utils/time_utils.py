@@ -80,7 +80,7 @@ def utcnow() -> datetime:
         Current UTC datetime with tzinfo=None. Never raises.
     """
     try:
-        return datetime.utcnow()
+        return datetime.now(tz=timezone.utc)
     except Exception:
         return _EPOCH
 
@@ -120,7 +120,7 @@ def from_utc_timestamp(ts: float) -> datetime:
         Returns datetime(1970, 1, 1) on any error.
     """
     try:
-        return datetime.utcfromtimestamp(float(ts))
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc)
     except Exception:
         return _EPOCH
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 __all__ = ["ScoreResult", "ScanSummary", "ScoringOutput"]
@@ -160,7 +160,7 @@ class ScanSummary:
     d_count: int
     bullish_count: int
     bearish_count: int
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dictionary.

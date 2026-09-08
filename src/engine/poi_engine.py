@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Literal, Optional
 
 import pandas as pd
@@ -247,7 +247,7 @@ class POIEngine:
         empty = POIResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df) if isinstance(df, pd.DataFrame) else 0,
         )
 
@@ -284,7 +284,7 @@ class POIEngine:
         return POIResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df),
             pois=pois,
             bullish_pois=bullish_pois,

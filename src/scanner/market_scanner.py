@@ -4,7 +4,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from src.models.scan_result import SymbolTimeframePair, TimeframeScanResult
@@ -229,7 +229,7 @@ class MarketScanner:
         Returns:
             ScanResult containing all results, stats, and dashboard data.
         """
-        started_at = datetime.utcnow()
+        started_at = datetime.now(tz=timezone.utc)
 
         try:
             pairs: list[SymbolTimeframePair] = self._symbol_provider.get_pairs()
@@ -327,7 +327,7 @@ class MarketScanner:
             return TimeframeScanResult(
                 symbol=pair.symbol,
                 timeframe=pair.timeframe,
-                scanned_at=datetime.utcnow(),
+                scanned_at=datetime.now(tz=timezone.utc),
                 success=False,
                 error_message=f"Unhandled exception: {exc}",
                 snapshot=None,
@@ -365,7 +365,7 @@ class MarketScanner:
                     result = TimeframeScanResult(
                         symbol=pair.symbol,
                         timeframe=pair.timeframe,
-                        scanned_at=datetime.utcnow(),
+                        scanned_at=datetime.now(tz=timezone.utc),
                         success=False,
                         error_message=f"Future exception: {exc}",
                         snapshot=None,
@@ -395,7 +395,7 @@ class MarketScanner:
         Returns:
             Fully populated ScanResult.
         """
-        finished_at = datetime.utcnow()
+        finished_at = datetime.now(tz=timezone.utc)
         duration_ms = (finished_at - started_at).total_seconds() * 1000.0
 
         # Collect flat score results from all successful scans

@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, Optional
 
@@ -93,7 +93,7 @@ class EntryMap:
     timeframe: str
     market_bias: str
     current_price: float
-    generated_at: datetime = field(default_factory=datetime.utcnow)
+    generated_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     entries: list[EntryPoint] = field(default_factory=list)
     best_entry: Optional[EntryPoint] = field(default=None)
 
@@ -239,7 +239,7 @@ class EntryPointEngine:
             timeframe=timeframe,
             market_bias=bias,
             current_price=current_price,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(tz=timezone.utc),
             entries=ranked,
             best_entry=best,
         )
@@ -428,7 +428,7 @@ def export_entry_points(scan_result: Any, output_dir: str = "output_files") -> s
 
         payload = {
             "version": "1.0",
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "symbols": symbols_data,
         }
         path.write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding="utf-8")

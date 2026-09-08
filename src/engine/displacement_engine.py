@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import numpy as np
@@ -228,7 +228,7 @@ class DisplacementEngine:
         empty = DisplacementResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df) if isinstance(df, pd.DataFrame) else 0,
         )
 
@@ -249,7 +249,7 @@ class DisplacementEngine:
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
-            timestamps = [datetime.utcnow()] * n
+            timestamps = [datetime.now(tz=timezone.utc)] * n
 
         atr = self._compute_atr(df)
         displacements: list[Displacement] = []
@@ -290,7 +290,7 @@ class DisplacementEngine:
                 try:
                     ts = pd.Timestamp(ts).to_pydatetime()
                 except Exception:
-                    ts = datetime.utcnow()
+                    ts = datetime.now(tz=timezone.utc)
 
             displacements.append(
                 Displacement(
@@ -323,7 +323,7 @@ class DisplacementEngine:
         return DisplacementResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=n,
             displacements=displacements,
             last_displacement=last_displacement,

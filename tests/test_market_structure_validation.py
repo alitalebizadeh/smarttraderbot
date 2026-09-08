@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 
@@ -29,7 +29,7 @@ def test_bos_requires_real_break_beyond_atr_threshold() -> None:
     df = _build_df_with_step(base=100.0, size=20, step=0.05)
     swing = SwingPoint(
         index=5,
-        time=datetime.utcnow(),
+        time=datetime.now(tz=timezone.utc),
         price=100.0,
         swing_type="high",
         is_confirmed=True,
@@ -50,7 +50,7 @@ def test_valid_bos_is_accepted_when_break_exceeds_atr_and_displacement() -> None
     df.loc[16, "close"] = 101.7
     df.loc[16, "high"] = 101.8
     df.loc[16, "low"] = 101.5
-    swing = SwingPoint(index=5, time=datetime.utcnow(), price=100.0, swing_type="high", is_confirmed=True)
+    swing = SwingPoint(index=5, time=datetime.now(tz=timezone.utc), price=100.0, swing_type="high", is_confirmed=True)
 
     events, bias = engine._detect_events(df, [swing], [], symbol="XAUUSD", timeframe="H1")
 
@@ -64,7 +64,7 @@ def test_fake_breakout_is_rejected() -> None:
     df.loc[10, "close"] = 100.04
     df.loc[10, "high"] = 100.05
     df.loc[10, "low"] = 100.03
-    swing = SwingPoint(index=5, time=datetime.utcnow(), price=100.0, swing_type="high", is_confirmed=True)
+    swing = SwingPoint(index=5, time=datetime.now(tz=timezone.utc), price=100.0, swing_type="high", is_confirmed=True)
 
     events, _ = engine._detect_events(df, [swing], [], symbol="XAUUSD", timeframe="H1")
 
@@ -82,8 +82,8 @@ def test_liquidity_grab_can_trigger_choch() -> None:
     df.loc[19, "close"] = 101.3
     df.loc[19, "high"] = 101.4
     df.loc[19, "low"] = 101.0
-    swing_high = SwingPoint(index=4, time=datetime.utcnow(), price=101.0, swing_type="high", is_confirmed=True)
-    swing_low = SwingPoint(index=10, time=datetime.utcnow(), price=99.3, swing_type="low", is_confirmed=True)
+    swing_high = SwingPoint(index=4, time=datetime.now(tz=timezone.utc), price=101.0, swing_type="high", is_confirmed=True)
+    swing_low = SwingPoint(index=10, time=datetime.now(tz=timezone.utc), price=99.3, swing_type="low", is_confirmed=True)
 
     events, bias = engine._detect_events(df, [swing_high], [swing_low], symbol="XAUUSD", timeframe="H1")
 
@@ -97,7 +97,7 @@ def test_weak_break_rejected_even_if_close_is_above_level() -> None:
     df.loc[12, "close"] = 100.02
     df.loc[12, "high"] = 100.03
     df.loc[12, "low"] = 100.01
-    swing = SwingPoint(index=5, time=datetime.utcnow(), price=100.0, swing_type="high", is_confirmed=True)
+    swing = SwingPoint(index=5, time=datetime.now(tz=timezone.utc), price=100.0, swing_type="high", is_confirmed=True)
 
     events, _ = engine._detect_events(df, [swing], [], symbol="XAUUSD", timeframe="H1")
 

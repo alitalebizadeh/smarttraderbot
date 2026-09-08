@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 from src.models.scoring import ScanSummary, ScoreResult, ScoringOutput
@@ -137,7 +137,7 @@ class ZoneScorer:
         return ScoringOutput(
             symbol=symbol,
             timeframe=timeframe,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(tz=timezone.utc),
             summary=summary,
             all_results=all_results,
             dashboard_results=dashboard_results,
@@ -214,7 +214,7 @@ class ZoneScorer:
             is_tradeable=tradeable,
             direction_emoji=emoji,
             premium_discount_zone=pd_zone,  # type: ignore[arg-type]
-            scored_at=datetime.utcnow(),
+            scored_at=datetime.now(tz=timezone.utc),
             order_block_score=ob_score,
             fvg_score=fvg_score,
             liquidity_sweep_score=liq_score,
@@ -343,7 +343,7 @@ class ZoneScorer:
             d_count=d_count,
             bullish_count=bullish_count,
             bearish_count=bearish_count,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(tz=timezone.utc),
         )
 
     # ------------------------------------------------------------------
@@ -396,7 +396,7 @@ class ZoneScorer:
         return ScoringOutput(
             symbol=symbol,
             timeframe=timeframe,
-            generated_at=datetime.utcnow(),
+            generated_at=datetime.now(tz=timezone.utc),
             summary=summary,
             all_results=[],
             dashboard_results=[],

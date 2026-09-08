@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import numpy as np
@@ -166,7 +166,7 @@ class MarketStructureEngine:
             return MarketStructure(
                 symbol=symbol,
                 timeframe=timeframe,
-                analyzed_at=datetime.utcnow(),
+                analyzed_at=datetime.now(tz=timezone.utc),
                 candle_count=len(df),
                 swing_highs=swing_highs,
                 swing_lows=swing_lows,
@@ -235,7 +235,7 @@ class MarketStructureEngine:
                 ts = (
                     raw_time.to_pydatetime()
                     if hasattr(raw_time, "to_pydatetime")
-                    else datetime.utcfromtimestamp(float(raw_time))
+                    else datetime.fromtimestamp(float(raw_time), tz=timezone.utc)
                 )
                 strength_score, scale = self._classify_swing_strength(df, i, float(pivot_high), "high")
                 swing_highs.append(
@@ -261,7 +261,7 @@ class MarketStructureEngine:
                 ts = (
                     raw_time.to_pydatetime()
                     if hasattr(raw_time, "to_pydatetime")
-                    else datetime.utcfromtimestamp(float(raw_time))
+                    else datetime.fromtimestamp(float(raw_time), tz=timezone.utc)
                 )
                 strength_score, scale = self._classify_swing_strength(df, i, float(pivot_low), "low")
                 swing_lows.append(
@@ -537,7 +537,7 @@ class MarketStructureEngine:
             candle_time = (
                 raw_time.to_pydatetime()
                 if hasattr(raw_time, "to_pydatetime")
-                else datetime.utcfromtimestamp(float(raw_time))
+                else datetime.fromtimestamp(float(raw_time), tz=timezone.utc)
             )
             atr_value = float(atr_values[i]) if i < len(atr_values) else 0.0
 
@@ -722,7 +722,7 @@ class MarketStructureEngine:
         return MarketStructure(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=candle_count,
             swing_highs=[],
             swing_lows=[],

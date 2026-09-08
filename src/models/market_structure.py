@@ -18,6 +18,7 @@ class SwingPoint:
     is_confirmed: bool = field(default=False)
     strength_score: float = field(default=0.0)
     swing_scale: Literal["internal", "external"] = field(default="internal")
+    confirmation_index: Optional[int] = field(default=None)
 
     def __post_init__(self) -> None:
         """Validate field values after initialisation."""
@@ -37,6 +38,8 @@ class SwingPoint:
             raise ValueError(
                 f"SwingPoint.swing_scale must be 'internal' or 'external', got {self.swing_scale}."
             )
+        if self.confirmation_index is not None and self.confirmation_index < self.index:
+            raise ValueError("SwingPoint.confirmation_index must not precede the swing index")
 
     def to_dict(self) -> dict:
         """Serialise to a JSON-compatible dictionary."""
@@ -48,6 +51,7 @@ class SwingPoint:
             "is_confirmed": self.is_confirmed,
             "strength_score": self.strength_score,
             "swing_scale": self.swing_scale,
+            "confirmation_index": self.confirmation_index,
         }
 
 

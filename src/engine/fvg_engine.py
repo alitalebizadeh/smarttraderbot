@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 import numpy as np
@@ -218,7 +218,7 @@ class FVGEngine:
             OHLCV DataFrame sorted oldest-first with integer index.
             Required columns: ``high``, ``low``.
             Timestamps are read from a ``timestamp`` or ``time`` column when
-            available; otherwise ``datetime.utcnow()`` is used as a fallback.
+            available; otherwise timezone-aware UTC is used as a fallback.
         symbol:
             Instrument name, e.g. ``"XAUUSD"``.
         timeframe:
@@ -233,7 +233,7 @@ class FVGEngine:
         empty = FVGResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=len(df) if isinstance(df, pd.DataFrame) else 0,
         )
 
@@ -248,7 +248,7 @@ class FVGEngine:
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
-            timestamps = [datetime.utcnow()] * len(df)
+            timestamps = [datetime.now(tz=timezone.utc)] * len(df)
 
         df = df.reset_index(drop=True)
         n = len(df)
@@ -336,7 +336,7 @@ class FVGEngine:
         return FVGResult(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=n,
             bullish_fvgs=bullish_fvgs,
             bearish_fvgs=bearish_fvgs,
@@ -522,7 +522,7 @@ class FVGEngine:
         Returns
         -------
         datetime
-            UTC ``datetime``.  Falls back to ``datetime.utcnow()`` on error.
+            UTC ``datetime``.  Falls back to the current timezone-aware UTC time on error.
         """
         try:
             ts = timestamps[idx]
@@ -530,7 +530,7 @@ class FVGEngine:
                 return ts
             return pd.Timestamp(ts).to_pydatetime()
         except Exception:
-            return datetime.utcnow()
+            return datetime.now(tz=timezone.utc)
 
 
 # ---------------------------------------------------------------------------

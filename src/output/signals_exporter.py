@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -59,7 +59,7 @@ class SignalsExporter:
                 entry = {
                     "symbol":    symbol,
                     "timeframe": timeframe,
-                    "generated_at": datetime.utcnow().isoformat(),
+                    "generated_at": datetime.now(tz=timezone.utc).isoformat(),
                     "market_structure": self._extract_market_structure(snapshot),
                     "order_blocks":     self._extract_order_blocks(snapshot),
                     "fvgs":             self._extract_fvgs(snapshot),
@@ -76,7 +76,7 @@ class SignalsExporter:
 
         return {
             "version": "1.0",
-            "generated_at": datetime.utcnow().isoformat(),
+                    "generated_at": datetime.now(tz=timezone.utc).isoformat(),
             "symbols": symbols_data,
         }
 

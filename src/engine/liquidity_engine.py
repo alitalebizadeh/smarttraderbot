@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Optional
 
 import numpy as np
@@ -197,7 +197,7 @@ class LiquidityEngine:
             return LiquidityMap(
                 symbol=symbol,
                 timeframe=timeframe,
-                analyzed_at=datetime.utcnow(),
+                analyzed_at=datetime.now(tz=timezone.utc),
                 candle_count=len(df),
                 bsl_levels=bsl_levels,
                 ssl_levels=ssl_levels,
@@ -529,7 +529,7 @@ class LiquidityEngine:
             return val.to_pydatetime()
         if isinstance(val, datetime):
             return val
-        return datetime.utcfromtimestamp(float(val))
+        return datetime.fromtimestamp(float(val), tz=timezone.utc)
 
     @staticmethod
     def _to_swing_dict(swing: Any) -> dict[str, Any]:
@@ -568,7 +568,7 @@ class LiquidityEngine:
         return LiquidityMap(
             symbol=symbol,
             timeframe=timeframe,
-            analyzed_at=datetime.utcnow(),
+            analyzed_at=datetime.now(tz=timezone.utc),
             candle_count=candle_count,
             bsl_levels=[],
             ssl_levels=[],

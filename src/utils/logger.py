@@ -158,8 +158,8 @@ def setup_logging(
         for handler in root_logger.handlers[:]:
             try:
                 handler.close()
-            except Exception:
-                pass
+            except OSError as exc:
+                root_logger.warning("Unable to close logging handler: %s", exc)
             root_logger.removeHandler(handler)
 
     root_logger.setLevel(numeric_level)

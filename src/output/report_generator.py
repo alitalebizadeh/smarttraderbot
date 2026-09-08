@@ -4,7 +4,7 @@ Generates a Persian trader-style HTML analysis report.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -95,7 +95,7 @@ class ReportGenerator:
 
     def _build_html(self, scan_result: Any, scoring_outputs: list[Any],
                     cluster_maps: list[Any] = None) -> str:
-        now_str = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
+        now_str = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
         if cluster_maps:
             sections = "\n".join(
                 self._build_cluster_section(
@@ -264,7 +264,7 @@ li {{ margin-bottom: 6px; }}
         avg_score     = float(getattr(summary, "avg_score", 0)) if summary else 0
         top_score     = float(getattr(summary, "top_score", 0)) if summary else 0
         total_pois    = int(getattr(summary, "total_pois_found", 0)) if summary else 0
-        scan_time     = getattr(summary, "scanned_at", datetime.utcnow()) if summary else datetime.utcnow()
+        scan_time     = getattr(summary, "scanned_at", datetime.now(tz=timezone.utc)) if summary else datetime.now(tz=timezone.utc)
         scan_str      = scan_time.strftime("%Y-%m-%d %H:%M:%S UTC") if hasattr(scan_time, "strftime") else str(scan_time)
         current_price = float(getattr(summary, "current_price", 0)) if summary else 0
 
@@ -415,7 +415,7 @@ li {{ margin-bottom: 6px; }}
         score     = float(getattr(result, "total_score", 0))
         grade     = str(getattr(result, "grade", "D"))
         pd_zone   = str(getattr(result, "premium_discount_zone", "unknown"))
-        scored_at = getattr(result, "scored_at", datetime.utcnow())
+        scored_at = getattr(result, "scored_at", datetime.now(tz=timezone.utc))
         has_ob    = bool(getattr(result, "has_order_block", False))
         has_fvg   = bool(getattr(result, "has_fvg", False))
         has_sweep = bool(getattr(result, "has_liquidity_sweep", False))
@@ -549,7 +549,7 @@ li {{ margin-bottom: 6px; }}
             gr        = str(getattr(r, "grade", "D"))
             pd        = str(getattr(r, "premium_discount_zone", ""))
             tr        = bool(getattr(r, "is_tradeable", False))
-            t         = getattr(r, "scored_at", datetime.utcnow())
+            t         = getattr(r, "scored_at", datetime.now(tz=timezone.utc))
             t_str     = t.strftime("%Y-%m-%d %H:%M") if hasattr(t, "strftime") else str(t)
             dir_icon  = "🟢" if direction == "bullish" else "🔴"
             gr_class  = "grade-" + gr.lower().replace("+", "plus")

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
 from src.models.zone_cluster import ClusterFactor, ClusterMap, ZoneCluster
@@ -225,7 +225,7 @@ class ZoneClusterEngine:
             symbol=symbol,
             timeframe=timeframe,
             market_bias=direction,
-            scanned_at=datetime.utcnow(),
+            scanned_at=datetime.now(tz=timezone.utc),
             clusters=clusters,
             top_cluster=top,
             total_count=len(clusters),
@@ -518,7 +518,7 @@ class ZoneClusterEngine:
                 has_fvg=has_fv,
                 has_supply_demand=has_sd,
                 premium_discount_zone=pd_zone,
-                created_at=datetime.utcnow(),
+                created_at=datetime.now(tz=timezone.utc),
                 ob_formation_time=ob_time,
                 fvg_formation_time=fvg_time,
                 entry_time_suggestion=entry_time,
@@ -928,7 +928,7 @@ class ZoneClusterEngine:
             symbol=symbol,
             timeframe=timeframe,
             market_bias=safe_bias,
-            scanned_at=datetime.utcnow(),
+            scanned_at=datetime.now(tz=timezone.utc),
         )
 
 

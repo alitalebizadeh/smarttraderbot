@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Literal, Optional
 
 __all__ = ["ClusterFactor", "ZoneCluster", "ClusterMap"]
@@ -167,7 +167,7 @@ class ZoneCluster:
     grade_label: str = field(default="")
     grade_color: str = field(default="#6c757d")
     is_tradeable: bool = field(default=False)
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(tz=timezone.utc))
     invalidated: bool = field(default=False)
     ob_formation_time: Optional[datetime] = field(default=None)
     fvg_formation_time: Optional[datetime] = field(default=None)
