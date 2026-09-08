@@ -6,6 +6,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Literal, Optional
 
 from src.models.zone_cluster import ClusterFactor, ClusterMap, ZoneCluster
+from src.utils.candle_utils import compute_atr_from_df
+from src.utils.price_utils import get_pip_size, price_distance_to_zone
 
 __all__ = ["ZoneClusterEngine", "create_cluster_engine"]
 
@@ -93,12 +95,16 @@ class ZoneClusterEngine:
     def __init__(
         self,
         pip_size: float = 0.01,
-        cluster_tolerance_pips: float = 50.0,
+        cluster_tolerance_pips: float = 30.0,
         min_factors: int = 1,
+        max_zone_distance_atr: float = 3.0,
+        max_cluster_width_pct: float = 0.015,
     ) -> None:
         self._pip_size    = pip_size
         self._tolerance   = cluster_tolerance_pips * pip_size
         self._min_factors = max(1, min_factors)
+        self._max_zone_distance_atr = max(0.5, max_zone_distance_atr)
+        self._max_cluster_width_pct = max(0.005, max_cluster_width_pct)
         self._log         = logging.getLogger(__name__)
 
     # ------------------------------------------------------------------
@@ -169,8 +175,23 @@ class ZoneClusterEngine:
 
         direction: Literal["bullish", "bearish"] = bias  # type: ignore[assignment]
 
+        current_price = float(getattr(snapshot, "current_price", 0.0) or 0.0)
+        atr = compute_atr_from_df(candles if candles is not None else getattr(snapshot, "df", None))
+        max_distance = (
+            atr * self._max_zone_distance_atr
+            if atr > 0 and current_price > 0
+            else current_price * 0.01
+        )
+        max_cluster_width = (
+            current_price * self._max_cluster_width_pct
+            if current_price > 0
+            else float("inf")
+        )
+
         # Step 2 — Collect raw zones aligned with bias
-        raw_zones = self._collect_raw_zones(snapshot, direction)
+        raw_zones = self._collect_raw_zones(
+            snapshot, direction, current_price, max_distance
+        )
 
         if not raw_zones:
             self._log.info(
@@ -180,7 +201,7 @@ class ZoneClusterEngine:
             return self._empty_map(symbol, timeframe, direction)
 
         # Step 5 — Cluster overlapping zones
-        groups = self._cluster(raw_zones)
+        groups = self._cluster(raw_zones, max_cluster_width)
 
         # Compute premium/discount range once
         pd_range = self._price_range(snapshot, candles)
@@ -237,23 +258,20 @@ class ZoneClusterEngine:
     # ------------------------------------------------------------------
 
     def _collect_raw_zones(
-        self, snapshot: Any, direction: str
+        self,
+        snapshot: Any,
+        direction: str,
+        current_price: float = 0.0,
+        max_distance: float = 0.0,
     ) -> list[_RawZone]:
-        """Collect all active SMC zones that match *direction*.
-
-        Parameters
-        ----------
-        snapshot:
-            MarketSnapshot with engine results.
-        direction:
-            ``"bullish"`` or ``"bearish"``.
-
-        Returns
-        -------
-        list[_RawZone]
-            Flat list of valid raw zones.
-        """
+        """Collect active SMC zones matching *direction*, near *current_price*."""
         zones: list[_RawZone] = []
+
+        def _near_enough(top: float, bottom: float) -> bool:
+            if current_price <= 0 or max_distance <= 0:
+                return True
+            mid = (top + bottom) / 2.0
+            return price_distance_to_zone(current_price, top, bottom) <= max_distance
 
         # --- Order Blocks ---
         ob_map = getattr(snapshot, "order_blocks", None)
@@ -267,9 +285,11 @@ class ZoneClusterEngine:
             for ob in ob_list:
                 if getattr(ob, "is_mitigated", False):
                     continue
+                if getattr(ob, "is_broken_retested", False):
+                    continue
                 top    = float(getattr(ob, "zone_top",    0.0))
                 bottom = float(getattr(ob, "zone_bottom", 0.0))
-                if not self._valid_zone(top, bottom):
+                if not self._valid_zone(top, bottom) or not _near_enough(top, bottom):
                     continue
                 label = "Bearish" if direction == "bearish" else "Bullish"
                 zones.append(_RawZone(
@@ -298,7 +318,7 @@ class ZoneClusterEngine:
                     continue
                 top    = float(getattr(fvg, "gap_top",    0.0))
                 bottom = float(getattr(fvg, "gap_bottom", 0.0))
-                if not self._valid_zone(top, bottom):
+                if not self._valid_zone(top, bottom) or not _near_enough(top, bottom):
                     continue
                 zones.append(_RawZone(
                     zone_top=top,
@@ -321,11 +341,11 @@ class ZoneClusterEngine:
             ) or []
 
             for sdz in sd_list:
-                if getattr(sdz, "status", "broken") == "broken":
+                if getattr(sdz, "is_broken", False):
                     continue
                 top    = float(getattr(sdz, "zone_top",    0.0))
                 bottom = float(getattr(sdz, "zone_bottom", 0.0))
-                if not self._valid_zone(top, bottom):
+                if not self._valid_zone(top, bottom) or not _near_enough(top, bottom):
                     continue
                 label = "Supply" if direction == "bearish" else "Demand"
                 zones.append(_RawZone(
@@ -345,39 +365,41 @@ class ZoneClusterEngine:
     # ------------------------------------------------------------------
 
     def _cluster(
-        self, raw_zones: list[_RawZone]
+        self,
+        raw_zones: list[_RawZone],
+        max_cluster_width: float = float("inf"),
     ) -> list[list[_RawZone]]:
-        """Group overlapping / nearby raw zones into clusters.
-
-        Sort by ``zone_bottom`` ascending, then merge zones whose
-        ``zone_bottom`` falls within current cluster top + tolerance.
-
-        Parameters
-        ----------
-        raw_zones:
-            Flat list of raw zones to cluster.
-
-        Returns
-        -------
-        list[list[_RawZone]]
-            Each inner list is one cluster group.
-        """
+        """Group overlapping / nearby raw zones into clusters."""
         sorted_zones = sorted(raw_zones, key=lambda z: z.zone_bottom)
         groups: list[list[_RawZone]] = []
         current: list[_RawZone] = []
         current_top: float = 0.0
+        current_bottom: float = 0.0
 
         for zone in sorted_zones:
             if not current:
                 current     = [zone]
                 current_top = zone.zone_top
-            elif zone.zone_bottom <= current_top + self._tolerance:
+                current_bottom = zone.zone_bottom
+                continue
+
+            merged_top = max(current_top, zone.zone_top)
+            merged_bottom = min(current_bottom, zone.zone_bottom)
+            merged_width = merged_top - merged_bottom
+            can_merge = (
+                zone.zone_bottom <= current_top + self._tolerance
+                and merged_width <= max_cluster_width
+            )
+
+            if can_merge:
                 current.append(zone)
-                current_top = max(current_top, zone.zone_top)
+                current_top = merged_top
+                current_bottom = merged_bottom
             else:
                 groups.append(current)
                 current     = [zone]
                 current_top = zone.zone_top
+                current_bottom = zone.zone_bottom
 
         if current:
             groups.append(current)
@@ -574,6 +596,9 @@ class ZoneClusterEngine:
             recent_sweep = sweeps[-1] if sweeps else None
 
         if recent_sweep is None:
+            return
+
+        if not bool(getattr(recent_sweep, "returned_inside", False)):
             return
 
         sweep_type = str(getattr(recent_sweep, "sweep_type", ""))
@@ -937,28 +962,19 @@ class ZoneClusterEngine:
 # ---------------------------------------------------------------------------
 
 def create_cluster_engine(
-    pip_size: float = 0.01,
-    cluster_tolerance_pips: float = 20.0,
+    symbol: str = "XAUUSD",
+    pip_size: Optional[float] = None,
+    cluster_tolerance_pips: float = 30.0,
     min_factors: int = 1,
+    max_zone_distance_atr: float = 3.0,
+    max_cluster_width_pct: float = 0.015,
 ) -> ZoneClusterEngine:
-    """Factory — return a configured :class:`ZoneClusterEngine`.
-
-    Parameters
-    ----------
-    pip_size:
-        One pip in price units.  Default ``0.01`` (XAUUSD).
-    cluster_tolerance_pips:
-        Merge gap in pips.  Default ``20.0``.
-    min_factors:
-        Minimum factors per cluster.  Default ``1``.
-
-    Returns
-    -------
-    ZoneClusterEngine
-        Ready-to-use engine instance.
-    """
+    """Factory — return a configured :class:`ZoneClusterEngine`."""
+    resolved_pip = pip_size if pip_size is not None else get_pip_size(symbol)
     return ZoneClusterEngine(
-        pip_size=pip_size,
+        pip_size=resolved_pip,
         cluster_tolerance_pips=cluster_tolerance_pips,
         min_factors=min_factors,
+        max_zone_distance_atr=max_zone_distance_atr,
+        max_cluster_width_pct=max_cluster_width_pct,
     )

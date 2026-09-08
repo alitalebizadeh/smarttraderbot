@@ -395,6 +395,33 @@ class ConfluenceEngine:
 
         recent_sweep = getattr(liquidity_map, "recent_sweep", None)
         if recent_sweep is not None:
+            if not bool(getattr(recent_sweep, "returned_inside", False)):
+                return FactorScore(
+                    factor_type="liquidity_sweep",
+                    is_present=False,
+                    points_awarded=0.0,
+                    max_points=SCORE_LIQUIDITY,
+                    evidence="Sweep without close rejection",
+                )
+
+            swept_level = getattr(recent_sweep, "swept_level", None)
+            sweep_price = float(getattr(swept_level, "price", 0.0)) if swept_level else 0.0
+            zone_top = float(getattr(poi, "zone_top", 0.0))
+            zone_bottom = float(getattr(poi, "zone_bottom", 0.0))
+            zone_size = max(zone_top - zone_bottom, 0.0)
+            tolerance = max(zone_size * 2.0, zone_top * 0.001)
+
+            if sweep_price > 0 and not (
+                zone_bottom - tolerance <= sweep_price <= zone_top + tolerance
+            ):
+                return FactorScore(
+                    factor_type="liquidity_sweep",
+                    is_present=False,
+                    points_awarded=0.0,
+                    max_points=SCORE_LIQUIDITY,
+                    evidence="Sweep not near POI zone",
+                )
+
             # Mutate the POI flag so downstream engines see it
             try:
                 poi.has_liquidity_sweep = True
@@ -402,7 +429,6 @@ class ConfluenceEngine:
                 self._logger.debug("POI does not support liquidity-sweep mutation")
 
             sweep_type  = getattr(recent_sweep, "sweep_type", "sweep")
-            swept_level = getattr(recent_sweep, "swept_level", None)
             if swept_level is not None:
                 price     = getattr(swept_level, "price", 0.0)
                 evidence  = f"Recent {sweep_type} at {price:.5f}"
@@ -454,21 +480,35 @@ class ConfluenceEngine:
                 evidence="Not detected",
             )
 
-        has_bos    = getattr(market_structure, "has_bos", False)
         last_event = getattr(market_structure, "last_event", None)
         poi_dir    = getattr(poi, "direction", "")
+        events     = getattr(market_structure, "events", []) or []
 
-        if has_bos and last_event is not None:
-            event_dir = getattr(last_event, "direction", "")
-            if event_dir == poi_dir:
-                evidence = f"BOS {poi_dir} confirmed"
-                return FactorScore(
-                    factor_type="bos",
-                    is_present=True,
-                    points_awarded=SCORE_BOS,
-                    max_points=SCORE_BOS,
-                    evidence=evidence,
-                )
+        bos_confirmed = False
+        if last_event is not None:
+            if (
+                str(getattr(last_event, "event_type", "")) == "BOS"
+                and str(getattr(last_event, "direction", "")) == poi_dir
+            ):
+                bos_confirmed = True
+
+        if not bos_confirmed and events:
+            recent = events[-5:]
+            bos_confirmed = any(
+                str(getattr(ev, "event_type", "")) == "BOS"
+                and str(getattr(ev, "direction", "")) == poi_dir
+                for ev in recent
+            )
+
+        if bos_confirmed:
+            evidence = f"BOS {poi_dir} confirmed"
+            return FactorScore(
+                factor_type="bos",
+                is_present=True,
+                points_awarded=SCORE_BOS,
+                max_points=SCORE_BOS,
+                evidence=evidence,
+            )
 
         return FactorScore(
             factor_type="bos",

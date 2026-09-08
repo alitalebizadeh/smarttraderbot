@@ -170,13 +170,18 @@ class LiquidityEngine:
             equal_highs, equal_lows = self._detect_equal_highs_lows(sh, sl, symbol, timeframe)
             sweeps = self._detect_sweeps(df, bsl_levels, ssl_levels, symbol, timeframe)
 
-            # Most recent sweep within lookback window
+            # Most recent valid sweep within lookback window
             recent_sweep: Optional[LiquiditySweep] = None
             if sweeps:
                 cutoff_index = len(df) - RECENT_SWEEP_LOOKBACK
                 recent_candidates = [
-                    s for s in sweeps if s.sweep_candle_index >= cutoff_index
+                    s for s in sweeps
+                    if s.sweep_candle_index >= cutoff_index and s.returned_inside
                 ]
+                if not recent_candidates:
+                    recent_candidates = [
+                        s for s in sweeps if s.sweep_candle_index >= cutoff_index
+                    ]
                 if recent_candidates:
                     recent_sweep = max(
                         recent_candidates, key=lambda s: s.sweep_candle_index

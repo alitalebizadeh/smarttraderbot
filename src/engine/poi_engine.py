@@ -10,6 +10,8 @@ import pandas as pd
 from src.engine.fvg_engine import FVG
 from src.engine.order_block_engine import OrderBlock
 from src.engine.supply_demand_engine import SupplyDemandZone
+from src.utils.candle_utils import compute_atr_from_df
+from src.utils.price_utils import price_distance_to_zone
 
 __all__ = [
     "POIEngine",
@@ -26,6 +28,7 @@ __all__ = [
 OVERLAP_TOLERANCE_PCT: float = 0.1
 SWING_LOOKBACK: int = 50
 MIN_CANDLES_REQUIRED: int = 10
+MAX_ZONE_DISTANCE_ATR: float = 3.0
 
 _REQUIRED_COLUMNS: frozenset[str] = frozenset({"high", "low", "close"})
 _TYPE_OB: str = "ob"
@@ -256,7 +259,19 @@ class POIEngine:
 
         df = df.reset_index(drop=True)
 
-        candidates = self._collect_candidates(ob_result, fvg_result, sd_result)
+        current_price = float(df["close"].iloc[-1]) if len(df) else 0.0
+        atr = compute_atr_from_df(df)
+        max_distance = (
+            atr * MAX_ZONE_DISTANCE_ATR
+            if atr > 0
+            else current_price * 0.01
+        )
+
+        candidates = self._collect_candidates(
+            ob_result, fvg_result, sd_result,
+            current_price=current_price,
+            max_distance=max_distance,
+        )
 
         if not candidates:
             self._log.info(
@@ -349,43 +364,24 @@ class POIEngine:
         ob_result: Optional[Any],
         fvg_result: Optional[Any],
         sd_result: Optional[Any],
+        current_price: float = 0.0,
+        max_distance: float = 0.0,
     ) -> list[dict]:
-        """Flatten active zones from all engine results into a candidate list.
-
-        Each candidate dict holds the minimal information required for
-        grouping and POI construction:
-
-        .. code-block:: python
-
-            {
-                "top": float,
-                "bottom": float,
-                "direction": str,     # "bullish" or "bearish"
-                "index": int,
-                "time": datetime,
-                "type": str,          # "ob", "fvg", or "sd"
-                "source": object,
-            }
-
-        Parameters
-        ----------
-        ob_result:
-            ``OrderBlockResult`` or ``None``.
-        fvg_result:
-            ``FVGResult`` or ``None``.
-        sd_result:
-            ``SupplyDemandResult`` or ``None``.
-
-        Returns
-        -------
-        list[dict]
-            Collected candidates across all provided results.
-        """
+        """Flatten active zones from all engine results into a candidate list."""
         candidates: list[dict] = []
+
+        def _keep(top: float, bottom: float) -> bool:
+            if current_price <= 0 or max_distance <= 0:
+                return True
+            return price_distance_to_zone(current_price, top, bottom) <= max_distance
 
         # --- Order Blocks ---
         if ob_result is not None and hasattr(ob_result, "active_obs"):
             for ob in ob_result.active_obs:
+                if getattr(ob, "is_broken_retested", False):
+                    continue
+                if not _keep(ob.zone_top, ob.zone_bottom):
+                    continue
                 candidates.append(
                     {
                         "top": ob.zone_top,
@@ -401,6 +397,8 @@ class POIEngine:
         # --- FVGs ---
         if fvg_result is not None and hasattr(fvg_result, "active_fvgs"):
             for fvg in fvg_result.active_fvgs:
+                if not _keep(fvg.gap_top, fvg.gap_bottom):
+                    continue
                 candidates.append(
                     {
                         "top": fvg.gap_top,
@@ -416,9 +414,13 @@ class POIEngine:
         # --- Supply / Demand ---
         if sd_result is not None and hasattr(sd_result, "active_zones"):
             for sd in sd_result.active_zones:
+                if getattr(sd, "is_broken", False):
+                    continue
                 direction: Literal["bullish", "bearish"] = (
                     "bullish" if sd.zone_type == "demand" else "bearish"
                 )
+                if not _keep(sd.zone_top, sd.zone_bottom):
+                    continue
                 candidates.append(
                     {
                         "top": sd.zone_top,

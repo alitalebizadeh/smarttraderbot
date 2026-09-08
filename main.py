@@ -32,9 +32,20 @@ from src.engine.entry_point_engine import export_entry_points
 
 DEFAULTS: dict[str, Any] = {
     "symbols":               ["XAUUSD"],
-    "timeframes":            ["M1"],
+    "timeframes":            ["M15", "H1"],
     "interval_seconds":      60,
     "run_mode":              "single",
+    "htf_timeframe":         "",
+    "swing_length":          0,
+    "max_workers":           1,
+    "min_score_threshold":   0.0,
+    "data_dir":              "data",
+    "max_candles":           5000,
+    "use_live_mt5":          False,
+    "cluster_tolerance_pips": 30.0,
+    "max_zone_distance_atr": 3.0,
+    "max_cluster_width_pct": 0.015,
+    "displacement_body_atr": 1.0,
     "log_level":             "INFO",
     "log_to_file":           True,
     "log_dir":               "logs",
@@ -97,11 +108,26 @@ def load_config(config_path: Path) -> dict[str, Any]:
         scanner_cfg   = raw.get("scanner",   {}) or {}
         logging_cfg   = raw.get("logging",   {}) or {}
         dashboard_cfg = raw.get("dashboard", {}) or {}
+        data_cfg      = raw.get("data",      {}) or {}
+        engines_cfg   = raw.get("engines",   {}) or {}
 
         cfg["symbols"]              = scanner_cfg.get("symbols",          cfg["symbols"])
         cfg["timeframes"]           = scanner_cfg.get("timeframes",        cfg["timeframes"])
         cfg["interval_seconds"]     = scanner_cfg.get("interval_seconds",  cfg["interval_seconds"])
         cfg["run_mode"]             = scanner_cfg.get("run_mode",          cfg["run_mode"])
+        cfg["htf_timeframe"]        = scanner_cfg.get("htf_timeframe",     cfg["htf_timeframe"])
+        cfg["swing_length"]         = scanner_cfg.get("swing_length",      cfg["swing_length"])
+        cfg["max_workers"]          = scanner_cfg.get("max_workers",       cfg["max_workers"])
+        cfg["min_score_threshold"]  = scanner_cfg.get("min_score_threshold", cfg["min_score_threshold"])
+
+        cfg["data_dir"]             = data_cfg.get("data_dir",            cfg["data_dir"])
+        cfg["max_candles"]          = data_cfg.get("max_candles",         cfg["max_candles"])
+        cfg["use_live_mt5"]         = data_cfg.get("use_live_mt5",        cfg["use_live_mt5"])
+
+        cfg["cluster_tolerance_pips"] = engines_cfg.get("cluster_tolerance_pips", cfg["cluster_tolerance_pips"])
+        cfg["max_zone_distance_atr"]  = engines_cfg.get("max_zone_distance_atr",  cfg["max_zone_distance_atr"])
+        cfg["max_cluster_width_pct"]  = engines_cfg.get("max_cluster_width_pct",  cfg["max_cluster_width_pct"])
+        cfg["displacement_body_atr"]  = engines_cfg.get("displacement_body_atr",  cfg["displacement_body_atr"])
 
         cfg["log_level"]            = logging_cfg.get("level",             cfg["log_level"])
         cfg["log_to_file"]          = logging_cfg.get("log_to_file",       cfg["log_to_file"])
@@ -218,15 +244,47 @@ def build_scanner(cfg: dict[str, Any], symbols: list[str], timeframes: list[str]
     from src.data.symbol_provider import SymbolProvider
     from src.data.candle_provider import CandleProvider
 
-    from src.data.mt5_loader import MT5Loader
-    loader = MT5Loader(data_dir="data")
-    candle_provider = CandleProvider(loader=loader)
-    timeframe_scanner = TimeframeScanner(candle_provider=candle_provider)
+    from src.data.mt5_loader import MT5Loader, MT5_AVAILABLE
+
+    data_dir = str(cfg.get("data_dir", "data"))
+    max_candles = int(cfg.get("max_candles", 5000))
+    if max_candles <= 0:
+        max_candles = None  # type: ignore[assignment]
+
+    connection = None
+    if cfg.get("use_live_mt5") and MT5_AVAILABLE:
+        try:
+            from src.data.mt5_connection import create_connection
+            connection = create_connection()
+            if connection is not None and hasattr(connection, "connect"):
+                connection.connect()
+        except Exception:
+            connection = None
+
+    loader = MT5Loader(data_dir=data_dir)
+    candle_provider = CandleProvider(
+        loader=loader,
+        connection=connection,
+        max_candles=max_candles or 5000,
+    )
+
+    tf_scanner_cfg = {
+        "swing_length": int(cfg.get("swing_length", 0)),
+        "htf_timeframe": str(cfg.get("htf_timeframe", "")),
+        "cluster_tolerance_pips": float(cfg.get("cluster_tolerance_pips", 30.0)),
+        "max_zone_distance_atr": float(cfg.get("max_zone_distance_atr", 3.0)),
+        "max_cluster_width_pct": float(cfg.get("max_cluster_width_pct", 0.015)),
+        "displacement_body_atr": float(cfg.get("displacement_body_atr", 1.0)),
+    }
+    timeframe_scanner = TimeframeScanner(
+        candle_provider=candle_provider,
+        config=tf_scanner_cfg,
+    )
     symbol_provider = SymbolProvider(symbols=symbols, timeframes=timeframes)
 
     scanner_cfg = {
-        "max_workers": 1,
-        "min_score_threshold": 0.0,
+        "max_workers": int(cfg.get("max_workers", 1)),
+        "min_score_threshold": float(cfg.get("min_score_threshold", 0.0)),
     }
     return MarketScanner(
         timeframe_scanner=timeframe_scanner,

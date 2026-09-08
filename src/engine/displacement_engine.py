@@ -8,6 +8,8 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
+from src.utils.candle_utils import resolve_candle_timestamps, resolve_timestamp
+
 __all__ = [
     "DisplacementEngine",
     "DisplacementEngineError",
@@ -235,6 +237,7 @@ class DisplacementEngine:
         if not self._validate(df, symbol, timeframe):
             return empty
 
+        timestamps = resolve_candle_timestamps(df)
         df = df.reset_index(drop=True)
         n = len(df)
 
@@ -243,14 +246,15 @@ class DisplacementEngine:
         lows   = df["low"].to_numpy(dtype=float)
         closes = df["close"].to_numpy(dtype=float)
 
-        # Resolve timestamps
-        if "timestamp" in df.columns:
+        # Resolve timestamps before reset_index
+        if df.index.name == "time" or hasattr(df.index, 'tzinfo'):
+            timestamps = df.index.tolist()
+        elif "timestamp" in df.columns:
             timestamps = df["timestamp"].tolist()
         elif "time" in df.columns:
             timestamps = df["time"].tolist()
         else:
             timestamps = [datetime.now(tz=timezone.utc)] * n
-
         atr = self._compute_atr(df)
         displacements: list[Displacement] = []
 
@@ -285,7 +289,7 @@ class DisplacementEngine:
                 i, highs, lows, closes, direction
             )
 
-            ts = timestamps[i]
+            ts = timestamps[i] if i < len(timestamps) else datetime.now(tz=timezone.utc)
             if not isinstance(ts, datetime):
                 try:
                     ts = pd.Timestamp(ts).to_pydatetime()

@@ -392,8 +392,15 @@ class MT5Loader:
         # ── 1. Normalize column names ──────────────────────────────────────
         df = df.copy()
         df.columns = [
-            str(c).strip().lower().replace(" ", "_") for c in df.columns
+            str(c).strip().lower().replace(" ", "_").strip("<>").replace("tickvol", "tick_volume") for c in df.columns
         ]
+        # Handle MT5 split date/time columns with dot-separated dates (2026.09.03)
+        if "date" in df.columns and "time" in df.columns:
+            df["time"] = pd.to_datetime(
+                df["date"].astype(str).str.replace(".", "-", regex=False) + " " + df["time"].astype(str),
+                utc=True, errors="coerce"
+            )
+            df = df.drop(columns=["date"], errors="ignore")
 
         # ── 2. Handle split Date + Time columns ───────────────────────────
         # MT5 sometimes exports: <DATE>  <TIME>  <OPEN>  ...

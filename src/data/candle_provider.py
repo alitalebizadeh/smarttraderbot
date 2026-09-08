@@ -110,7 +110,7 @@ class CandleProvider:
         self,
         loader: MT5Loader,
         connection: Optional[Any] = None,
-        max_candles: int = DEFAULT_MAX_CANDLES,
+        max_candles: int | None = DEFAULT_MAX_CANDLES,
         cache_ttl_sec: float = DEFAULT_CACHE_TTL_SEC,
     ) -> None:
         """Initialize the CandleProvider.
@@ -212,11 +212,12 @@ class CandleProvider:
 
             # Load from source
             try:
+                load_count = self._max_candles if self._max_candles and self._max_candles > 0 else None
                 df = self._loader.load(
                     symbol=symbol,
                     timeframe=timeframe,
                     connection=self._connection,
-                    max_candles=self._max_candles,
+                    max_candles=load_count,
                 )
             except MT5LoaderError as exc:
                 raise CandleProviderError(

@@ -8,6 +8,8 @@ from typing import Literal, Optional
 import numpy as np
 import pandas as pd
 
+from src.utils.candle_utils import resolve_candle_timestamps
+
 __all__ = [
     "SupplyDemandEngine",
     "SupplyDemandEngineError",
@@ -248,16 +250,10 @@ class SupplyDemandEngine:
         if not self._validate(df, symbol, timeframe):
             return empty
 
+        timestamps = resolve_candle_timestamps(df)
         df = df.reset_index(drop=True)
         n = len(df)
 
-        # Resolve timestamps
-        if "timestamp" in df.columns:
-            timestamps = df["timestamp"].tolist()
-        elif "time" in df.columns:
-            timestamps = df["time"].tolist()
-        else:
-            timestamps = [datetime.now(tz=timezone.utc)] * n
 
         atr    = self._compute_atr(df)
         bases  = self._find_bases(df, atr)

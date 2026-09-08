@@ -40,7 +40,7 @@ __all__ = [
 # ─────────────────────────────────────────────
 
 VALID_TIMEFRAMES: frozenset[str] = frozenset(
-    {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN"}
+    {"M1", "M5", "M15", "M30", "H1", "H4", "D1", "W1", "MN", "MN1"}
 )
 
 _OHLCV_REQUIRED: list[str] = ["open", "high", "low", "close"]

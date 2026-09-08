@@ -1,91 +1,30 @@
-# ─────────────────────────────────────────────────────────────────────────────
-# SmartTraderBot — config.yaml
-# Main configuration file. All settings are read by main.py at startup.
-# Edit this file to change symbols, timeframes, scan interval, and more.
-# ─────────────────────────────────────────────────────────────────────────────
-
-# ── Scanner settings ──────────────────────────────────────────────────────────
-scanner:
-
-  # Symbols to scan. Add or remove as needed.
-  # Supported: Forex pairs, XAUUSD (Gold), US30 (Dow), NAS100 (Nasdaq), USOIL
-  symbols:
-    - XAUUSD
-
-  # Timeframes to scan per symbol.
-  # Valid values: M1, M5, M15, M30, H1, H4, D1, W1, MN
-  timeframes:
-    - M1
-
-  # Seconds between scan cycles (loop mode only).
-  # Minimum: 10. Recommended: 60 for M1, 300 for M5+
-  interval_seconds: 60
-
-  # Run mode:
-  #   "test"  → scan only the first symbol and first timeframe (fast dev mode)
-  #   "full"  → scan all configured symbols and timeframes
-  run_mode: single
-
-
-# ── Logging settings ──────────────────────────────────────────────────────────
-logging:
-
-  # Log level: DEBUG | INFO | WARNING | ERROR
-  level: INFO
-
-  # Write logs to a rotating file in addition to console output
-  log_to_file: true
-
-  # Directory for log files (created automatically if missing)
-  log_dir: logs
-
-  # Log filename (rotates at 5MB, keeps 3 backups)
-  log_filename: smarttrader.log
-
-
-# ── Dashboard settings ────────────────────────────────────────────────────────
 dashboard:
-
-  # Directory where dashboard.html is written
-  output_dir: /Users/alitalebizadeh/Documents/SmartTraderBot_output
-
-  # Output HTML filename
-  filename: dashboard.html
-
-  # Browser auto-refresh interval in seconds (0 = disabled)
   auto_refresh_seconds: 60
-
-  # Page title shown in browser tab and dashboard header
-  title: "SmartTraderBot — Market Scanner"
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Full example config (all supported symbols and timeframes):
-#
-# scanner:
-#   symbols:
-#     - XAUUSD
-#     - EURUSD
-#     - GBPUSD
-#     - USDJPY
-#     - USDCHF
-#     - AUDUSD
-#     - NZDUSD
-#     - USDCAD
-#     - EURGBP
-#     - EURJPY
-#     - GBPJPY
-#     - US30
-#     - NAS100
-#     - USOIL
-#   timeframes:
-#     - M1
-#     - M5
-#     - M15
-#     - M30
-#     - H1
-#     - H4
-#     - D1
-#   interval_seconds: 60
-#   run_mode: full
-# ─────────────────────────────────────────────────────────────────────────────
+  filename: dashboard.html
+  output_dir: output_files
+  title: SmartTraderBot — Market Scanner
+data:
+  data_dir: data
+  max_candles: 5000
+  use_live_mt5: false
+engines:
+  cluster_tolerance_pips: 30.0
+  displacement_body_atr: 1.0
+  max_cluster_width_pct: 0.015
+  max_zone_distance_atr: 3.0
+logging:
+  level: INFO
+  log_dir: logs
+  log_filename: smarttrader.log
+  log_to_file: true
+scanner:
+  htf_timeframe: ''
+  interval_seconds: 60
+  max_workers: 1
+  min_score_threshold: 0.0
+  run_mode: single
+  swing_length: 0
+  symbols:
+  - XAUUSD
+  timeframes:
+  - M1

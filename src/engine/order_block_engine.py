@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from src.engine.displacement_engine import Displacement, DisplacementResult
+from src.utils.candle_utils import resolve_candle_timestamps, resolve_timestamp
 
 __all__ = [
     "OrderBlockEngine",
@@ -334,11 +335,15 @@ class OrderBlockEngine:
                 bearish_obs.append(ob)
 
         all_obs = bullish_obs + bearish_obs
+        all_obs = self._dedupe_obs(all_obs)
         self._check_broken_retested(df, all_obs)
         self._check_mitigation(df, all_obs, timestamps)
 
         active_obs = sorted(
-            [ob for ob in all_obs if not ob.is_mitigated],
+            [
+                ob for ob in all_obs
+                if not ob.is_mitigated and not ob.is_broken_retested
+            ],
             key=lambda ob: ob.origin_index,
             reverse=True,
         )
@@ -579,8 +584,6 @@ class OrderBlockEngine:
         n      = len(df)
 
         for ob in obs:
-            if ob.is_broken_retested:
-                continue
             start = ob.displacement_index + 1
             if start >= n:
                 continue
@@ -590,18 +593,29 @@ class OrderBlockEngine:
                     break
 
                 if ob.direction == "bullish":
-                    entered = lows[i] <= ob.zone_top and closes[i] < ob.zone_top
+                    entered = lows[i] <= ob.zone_top and highs[i] >= ob.zone_bottom
                 else:
-                    entered = highs[i] >= ob.zone_bottom and closes[i] > ob.zone_bottom
+                    entered = highs[i] >= ob.zone_bottom and lows[i] <= ob.zone_top
 
                 if entered:
                     ob.is_mitigated      = True
                     ob.mitigated_at_index = i
-                    ob.mitigated_at_time  = self._resolve_ts(timestamps, i)
+                    ob.mitigated_at_time  = resolve_timestamp(timestamps, i)
                     self._log.debug(
                         "%s OB %s mitigated at candle %d.",
                         ob.direction, ob.ob_id, i,
                     )
+
+    @staticmethod
+    def _dedupe_obs(obs: list[OrderBlock]) -> list[OrderBlock]:
+        """Keep one OB per origin candle (most recent displacement wins)."""
+        seen: dict[tuple[str, int], OrderBlock] = {}
+        for ob in obs:
+            key = (ob.direction, ob.origin_index)
+            prev = seen.get(key)
+            if prev is None or ob.displacement_index >= prev.displacement_index:
+                seen[key] = ob
+        return list(seen.values())
 
     # ------------------------------------------------------------------
     # Private: utility helpers

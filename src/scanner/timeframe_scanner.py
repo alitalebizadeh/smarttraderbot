@@ -19,6 +19,8 @@ from src.models.scan_result import SymbolTimeframePair, TimeframeScanResult
 from src.models.scoring import ScoringOutput
 from src.scoring.zone_scorer import ZoneScorer
 from src.engine.zone_cluster_engine import ZoneClusterEngine
+from src.utils.candle_utils import get_htf_timeframe, get_swing_length
+from src.utils.price_utils import get_pip_size
 
 __all__ = ["TimeframeScanner", "TimeframeScannerError", "create_scanner"]
 
@@ -90,17 +92,17 @@ class TimeframeScanner:
         config: Optional[dict] = None,
     ) -> None:
         self._provider = candle_provider
-        self._config   = config or {}
+        cfg = config or {}
+        self._config = cfg
         self._log      = logging.getLogger(__name__)
 
-        swing_length: int = int(
-            self._config.get("swing_length", _DEFAULT_SWING_LENGTH)
-        )
+        swing_override = int(cfg.get("swing_length", 0))
+        default_swing = swing_override if swing_override >= 2 else _DEFAULT_SWING_LENGTH
 
-        # Market Structure Engine
+        # Market Structure Engine — per-timeframe swing set in scan()
         if _MS_ENGINE_AVAILABLE:
             self._ms_engine: Optional[Any] = MarketStructureEngine(
-                swing_length=swing_length
+                swing_length=default_swing
             )
         else:
             self._ms_engine = None
@@ -108,21 +110,23 @@ class TimeframeScanner:
 
         # Liquidity Engine
         if _LIQ_ENGINE_AVAILABLE:
-            self._liq_engine: Optional[Any] = LiquidityEngine()
+            self._liq_engine: Optional[Any] = LiquidityEngine(
+                swing_length=default_swing
+            )
         else:
             self._liq_engine = None
             self._log.warning("LiquidityEngine not available — skipping.")
 
-        self._disp_engine: DisplacementEngine = DisplacementEngine()
+        disp_atr = float(cfg.get("displacement_body_atr", 0.8))
+        self._disp_engine: DisplacementEngine = DisplacementEngine(
+            body_atr_threshold=disp_atr,
+        )
         self._ob_engine:   OrderBlockEngine    = OrderBlockEngine()
         self._fvg_engine:  FVGEngine           = FVGEngine()
         self._sd_engine:   SupplyDemandEngine  = SupplyDemandEngine()
         self._poi_engine:  POIEngine           = POIEngine()
         self._conf_engine: ConfluenceEngine    = ConfluenceEngine()
         self._scorer:      ZoneScorer          = ZoneScorer()
-        self._cluster_engine: ZoneClusterEngine = ZoneClusterEngine(
-            pip_size=0.01, cluster_tolerance_pips=20.0, min_factors=1
-        )
         self._entry_engine: EntryPointEngine   = EntryPointEngine()
 
     # ------------------------------------------------------------------
@@ -224,6 +228,35 @@ class TimeframeScanner:
             (e.g. candle loading failure).
         """
         pipeline_start = time.perf_counter_ns()
+
+        swing_len = get_swing_length(
+            timeframe,
+            int(self._config.get("swing_length", 0)) or None,
+        )
+        if self._ms_engine is not None:
+            self._ms_engine._swing_length = swing_len
+        if self._liq_engine is not None:
+            self._liq_engine._swing_length = swing_len
+
+        pip_size = get_pip_size(symbol)
+        cluster_engine = ZoneClusterEngine(
+            pip_size=pip_size,
+            cluster_tolerance_pips=float(self._config.get("cluster_tolerance_pips", 30.0)),
+            min_factors=1,
+            max_zone_distance_atr=float(self._config.get("max_zone_distance_atr", 3.0)),
+            max_cluster_width_pct=float(self._config.get("max_cluster_width_pct", 0.015)),
+        )
+
+        # HTF structure for alignment scoring
+        htf_ms: Optional[Any] = None
+        htf_tf = get_htf_timeframe(timeframe, self._config.get("htf_timeframe") or None)
+        if htf_tf and self._ms_engine is not None:
+            try:
+                htf_df = self._provider.get_candles(symbol, htf_tf)
+                if htf_df is not None and len(htf_df) > 0:
+                    htf_ms = self._ms_engine.analyze(htf_df, symbol, htf_tf)
+            except Exception as exc:
+                self._log.debug("[%s/%s] HTF load failed (%s): %s", symbol, timeframe, htf_tf, exc)
 
         # ----------------------------------------------------------
         # Step 1 — Load candles (fatal if this fails)
@@ -355,6 +388,11 @@ class TimeframeScanner:
                 fvg_result=fvgs,
                 sd_result=supply_demand,
             )
+            if pois is not None and htf_ms is not None:
+                htf_bias = str(getattr(htf_ms, "current_bias", "neutral"))
+                for poi in getattr(pois, "pois", []) or []:
+                    if htf_bias in ("bullish", "bearish"):
+                        poi.htf_aligned = str(getattr(poi, "direction", "")) == htf_bias
             engines_run.append("pois")
         except Exception as exc:
             engines_failed.append("pois")
@@ -394,6 +432,7 @@ class TimeframeScanner:
                 poi_result=pois,
                 market_structure=market_structure,
                 liquidity_map=liquidity,
+                htf_market_structure=htf_ms,
             )
             bias = "neutral"
             if market_structure is not None:
@@ -417,7 +456,7 @@ class TimeframeScanner:
         # Zone Clustering — merge overlapping zones into unified setups
         cluster_map = None
         try:
-            cluster_map = self._cluster_engine.analyze(
+            cluster_map = cluster_engine.analyze(
                 snapshot, symbol, timeframe, df
             )
             self._log.info(
